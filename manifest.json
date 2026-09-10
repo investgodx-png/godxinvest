@@ -1,0 +1,57 @@
+{
+  "name": "GodX — Save & Earn Interest Daily",
+  "short_name": "GodX",
+  "description": "RBI-registered savings and lending web app. Deposit funds, lend to verified customers and earn interest daily. 100% transparent, bank-grade security, 24-hour withdrawals.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "en-IN",
+  "dir": "ltr",
+  "categories": ["finance", "business", "productivity"],
+  "background_color": "#0F172A",
+  "theme_color": "#0F172A",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Savings Plans",
+      "short_name": "Plans",
+      "description": "Browse GodX savings plans and start earning daily interest",
+      "url": "./index.html#plans",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "My Wallet",
+      "short_name": "Wallet",
+      "description": "Check your balance, interest earned and withdraw",
+      "url": "./index.html#wallet",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

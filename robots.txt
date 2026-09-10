@@ -1,0 +1,11 @@
+# robots.txt for GodX — user-facing app
+# Deploy this at the ROOT of your domain: https://godxinvest.online/robots.txt
+# Replace https://godxinvest.online/ with your real domain everywhere below.
+
+User-agent: *
+Allow: /
+
+# Never index admin or internal files
+Disallow: /js/config.js
+
+Sitemap: https://godxinvest.online/sitemap.xml
