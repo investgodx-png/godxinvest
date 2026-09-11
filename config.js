@@ -3,16 +3,15 @@
    Firebase Console → Project Settings → Your apps → Web app
    ═══════════════════════════════════════════════════════════ */
 const firebaseConfig = {
-  apiKey: "AIzaSyCzbd_3E0QIUwIiGMhIFWKaBlenpxCLG1U",
-  authDomain: "portfolio-7e824.firebaseapp.com",
-  databaseURL: "https://portfolio-7e824-default-rtdb.firebaseio.com",
-  projectId: "portfolio-7e824",
-  storageBucket: "portfolio-7e824.firebasestorage.app",
-  messagingSenderId: "1000863098146",
-  appId: "1:1000863098146:web:59462964c7cd3e0abeb17b",
-  measurementId: "G-K1LBSW63V8"
+  apiKey: "AIzaSyBHRGu8LA3T6xkggR5q-_rnTR6yKwdlYlk",
+  authDomain: "godxinvest-7daeb.firebaseapp.com",
+  databaseURL: "https://godxinvest-7daeb-default-rtdb.firebaseio.com",
+  projectId: "godxinvest-7daeb",
+  storageBucket: "godxinvest-7daeb.firebasestorage.app",
+  messagingSenderId: "728078321044",
+  appId: "1:728078321044:web:b109517408d9230767fb81",
+  measurementId: "G-E34DH2G1XM"
 };
-
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
