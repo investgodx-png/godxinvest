@@ -20,10 +20,10 @@
   --shadow-lg:0 24px 56px rgba(37,99,235,.30);
   --nav-h:74px;
   --ease:cubic-bezier(.22,1,.36,1);
-  --font-d:'Sora','Outfit','Plus Jakarta Sans',system-ui,sans-serif;
-  --font-b:'Outfit','Plus Jakarta Sans',system-ui,sans-serif;
-  --font-chat:'Outfit','Manrope','Plus Jakarta Sans',system-ui,sans-serif;
-  --font-num:'Inter','Outfit','Plus Jakarta Sans',system-ui,sans-serif;
+  --font-d:'Bricolage Grotesque','Plus Jakarta Sans',system-ui,sans-serif;
+  --font-b:'Plus Jakarta Sans',system-ui,sans-serif;
+  --font-chat:'Plus Jakarta Sans',system-ui,sans-serif;
+  --font-num:'Inter','Plus Jakarta Sans',system-ui,sans-serif;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation}
 input,textarea{user-select:text}
@@ -142,9 +142,51 @@ h1,h2,h3,h4,.bh-amount,.wh-bal,.pc-name,.sheet-title,.amount-input input,.splash
 .su-perk svg{width:20px;height:20px;color:#0D9488;flex-shrink:0}
 .su-perk b{font-weight:800}
 .auth-note{font-size:.7rem;color:var(--sub);text-align:center;line-height:1.55}
-.auth-secure{display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px calc(12px + env(safe-area-inset-bottom));
+.auth-secure{display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 16px calc(12px + env(safe-area-inset-bottom));
   font-size:.62rem;font-weight:700;color:var(--sub);letter-spacing:.2px;text-align:center}
 .auth-secure svg{width:14px;height:14px;color:var(--p1);flex-shrink:0}
+.auth-how{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:10px;align-self:center;
+  padding:8px 16px;border-radius:999px;background:var(--grad-soft);border:1px solid #BFDBFE;
+  font-size:.7rem;font-weight:800;color:var(--p1);letter-spacing:.2px;transition:transform .12s var(--ease)}
+.auth-how:active{transform:scale(.95)}
+.auth-how svg{width:15px;height:15px;color:#0D9488;flex-shrink:0}
+
+/* ── How-it-works steps (lending model explainer) ── */
+.hw-steps{display:flex;flex-direction:column;gap:4px}
+.hw-step{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line)}
+.hw-step:last-child{border-bottom:0;padding-bottom:2px}
+.hw-n{width:26px;height:26px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  background:var(--grad-btn);color:#fff;font-size:.72rem;font-weight:800;font-family:var(--font-d);
+  box-shadow:0 6px 14px rgba(37,99,235,.32)}
+.hw-step b{font-size:.82rem;font-weight:800;display:block}
+.hw-step p{font-size:.72rem;color:var(--sub);margin-top:2px;line-height:1.5}
+
+/* ── Registered & trusted card ── */
+.reg-card{background:linear-gradient(150deg,#0F172A 0%,#1E3A8A 55%,#1D4ED8 100%);border-radius:var(--r-lg);
+  padding:16px 16px 12px;color:#fff;box-shadow:var(--shadow-lg);position:relative;overflow:hidden;margin-bottom:14px}
+.reg-card::before{content:'';position:absolute;top:-70px;right:-60px;width:190px;height:190px;border-radius:50%;
+  background:radial-gradient(circle,rgba(94,234,212,.22),transparent 70%)}
+.reg-head{display:flex;gap:12px;align-items:center;position:relative;z-index:1;margin-bottom:10px}
+.reg-head>svg{width:34px;height:34px;color:#5EEAD4;flex-shrink:0;filter:drop-shadow(0 4px 10px rgba(13,148,136,.5))}
+.reg-head b{font-size:.92rem;font-weight:800;font-family:var(--font-d);display:block;letter-spacing:.2px}
+.reg-head small{font-size:.68rem;opacity:.85;font-weight:600;line-height:1.4;display:block;margin-top:2px}
+.reg-strip{display:flex;flex-direction:column;gap:8px;position:relative;z-index:1;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:var(--r-md);
+  padding:10px 12px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.reg-item{display:flex;gap:10px;align-items:flex-start}
+.reg-item svg{width:17px;height:17px;color:#5EEAD4;flex-shrink:0;margin-top:1px}
+.reg-item b{font-size:.76rem;font-weight:800;display:block}
+.reg-item small{font-size:.66rem;opacity:.82;font-weight:600;line-height:1.45;display:block;margin-top:1px}
+.modal-sheet .reg-strip{background:var(--grad-soft);border-color:#BFDBFE;margin-bottom:14px}
+.modal-sheet .reg-item b{color:var(--ink)}
+.modal-sheet .reg-item small{color:var(--sub)}
+.modal-sheet .reg-item svg{color:#0D9488}
+.modal-sheet .hw-steps{margin-bottom:14px}
+
+/* ── Mobile keyboard fix: submit button now scrolls INSIDE .auth-scroll,
+   so it can never be trapped under the on-screen keyboard ── */
+.auth-scroll .btn-hero{margin-top:2px;flex-shrink:0}
+.auth-scroll .auth-note{padding-bottom:4px}
 
 /* very short phones: trim decorative extras so login ALWAYS fits without scrolling */
 @media(max-height:640px){
@@ -339,6 +381,16 @@ h1,h2,h3,h4,.bh-amount,.wh-bal,.pc-name,.sheet-title,.amount-input input,.splash
   border:1px solid rgba(255,255,255,.26);font-size:.66rem;font-weight:800;padding:5px 11px;border-radius:999px;white-space:nowrap}
 .wh-chip svg{width:11px;height:11px;flex-shrink:0;color:#fff}
 .wh-bal{font-size:clamp(1.8rem,8vw,2.2rem);font-weight:800;letter-spacing:-.5px;margin-top:6px;position:relative;z-index:1}
+/* growth chip — pulsing green up-arrow: "my money is increasing" */
+.wh-growth{display:inline-flex;align-items:center;gap:7px;margin-top:10px;padding:5px 12px 5px 9px;border-radius:999px;
+  background:rgba(34,197,94,.20);border:1px solid rgba(134,239,172,.45);color:#BBF7D0;
+  font-size:.74rem;font-weight:700;letter-spacing:.1px;position:relative;z-index:1;backdrop-filter:blur(6px)}
+.wh-up-arrow{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:50%;
+  background:rgba(74,222,128,.28);color:#4ADE80;animation:whUp 1.5s ease-in-out infinite;
+  filter:drop-shadow(0 0 6px rgba(74,222,128,.85))}
+.wh-up-arrow svg{width:12px;height:12px}
+@keyframes whUp{0%,100%{transform:translateY(1px) scale(1)}50%{transform:translateY(-2.5px) scale(1.14)}}
+@media (prefers-reduced-motion:reduce){.wh-up-arrow{animation:none}}
 .wh-btns{display:flex;gap:10px;margin-top:18px;position:relative;z-index:1}
 .wh-btns .btn{flex:1;background:rgba(255,255,255,.15);color:#fff;backdrop-filter:blur(8px);
   -webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.22);min-width:0;padding:12px 10px;font-size:.84rem}
@@ -1290,7 +1342,7 @@ body{overflow-x:clip}
   border:1px dashed rgba(37,99,235,.28);margin:14px 0}
 .share-code-box>div{display:flex;flex-direction:column;gap:2px;min-width:0}
 .share-code-box small{font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
-.share-code-box b{font-size:1.2rem;color:var(--ink);letter-spacing:.08em;font-family:'Sora',sans-serif}
+.share-code-box b{font-size:1.2rem;color:var(--ink);letter-spacing:.08em;font-family:var(--font-d)}
 .share-preview{padding:14px;border-radius:14px;background:#F8FAFC;border:1px solid #E2E8F0;margin-bottom:16px}
 .share-preview small{font-size:.62rem;font-weight:800;color:var(--muted);letter-spacing:.08em}
 .share-preview p{margin:6px 0 6px;font-size:.83rem;color:var(--ink);white-space:pre-line;line-height:1.5}
@@ -1305,3 +1357,45 @@ body{overflow-x:clip}
   color:#fff;box-shadow:0 4px 10px rgba(0,0,0,.12)}
 .share-ic svg{width:22px;height:22px}
 @media(max-width:360px){.share-grid{grid-template-columns:repeat(3,1fr)}}
+
+/* ═══════════ v16.0 — Modern realistic icons · bold display type · login fixes ═══════════ */
+
+/* ── BOLD ATTRACTIVE DISPLAY TYPE — Bricolage Grotesque headlines ── */
+.splash-name{font-size:2.6rem;letter-spacing:-.5px}
+.auth-hero h1{font-size:2.05rem;letter-spacing:-1.2px}
+.sec-head h3{font-size:1.12rem;letter-spacing:-.4px}
+.bh-amount,.wh-bal{font-weight:800;letter-spacing:-1.4px}
+.pc-name{font-weight:800}
+.sheet-title{font-size:1.22rem;letter-spacing:-.3px}
+.hd-title b{font-weight:800}
+.auth-tab{font-size:1rem;font-weight:800}
+
+/* ── AUTH TABS — icon + label pairing (modern segmented control) ── */
+.auth-tab{display:flex;align-items:center;justify-content:center;gap:7px}
+.auth-tab svg{width:16px;height:16px;flex-shrink:0;opacity:.75;transition:.25s var(--ease)}
+.auth-tab.active svg{opacity:1;transform:scale(1.08)}
+.auth-tab.active{font-weight:800}
+
+/* ── FIELD ICONS — slightly bolder, glow on focus ── */
+.f-ic{width:19px;height:19px;stroke-width:2.2}
+.fwrap:focus-within .f-ic{color:var(--p1);filter:drop-shadow(0 2px 6px rgba(37,99,235,.45))}
+.field input{font-weight:700}
+
+/* ── DUOTONE ICON POLISH — let the soft tint layer render crisply ── */
+.quick-ic svg,.pc-badge svg,.stat-ic svg,.set-ic svg,.trust-ic svg,.about-ic svg,
+.dest-ic svg,.be-ic svg,.qr-ic svg,.sup-hero-ic svg{stroke-width:2.1}
+.empty svg{color:#BFDBFE}
+
+/* ── BOTTOM NAV — duotone icons get a livelier active state ── */
+.nav-btn svg{stroke-width:2.2;filter:drop-shadow(0 0 0 rgba(37,99,235,0))}
+.nav-btn.active svg{filter:drop-shadow(0 4px 10px rgba(37,99,235,.4))}
+.nav-btn span{font-weight:800;letter-spacing:.1px}
+
+/* ── LOGIN PAGE FIXES ── */
+/* signup tab's bottom switch link sits inside the scroll area — keep spacing tight */
+#form-signup .auth-alt{margin-top:4px;padding-bottom:6px}
+/* long-press / double-tap on tabs no longer selects text or flashes */
+.auth-tab,.auth-link,.auth-alt button{-webkit-tap-highlight-color:transparent}
+/* inputs: prevent iOS zoom-on-focus while keeping the app-zoom lock intact */
+.field input{font-size:1rem}
+@media(max-width:360px){.auth-tab{font-size:.9rem;gap:5px}.auth-tab svg{width:14px;height:14px}}
