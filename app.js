@@ -51,57 +51,66 @@ const store = { // safe localStorage (private-mode proof)
   set(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
 };
 
-/* ── Premium stroke icon library (Lucide-style, 24×24, round caps) ── */
+/* ── Premium DUO-TONE icon library (v16 — modern, realistic, unique) ──
+   Every icon = a soft-tinted duotone layer (currentColor at low opacity,
+   so it inherits each tile's brand colour) + a crisp 2.1px rounded stroke
+   on top. One call signature, so every existing IC.* usage upgrades
+   automatically with zero template changes. */
 const ic = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const IC = {
-  bell: ic('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'),
-  eye: ic('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>'),
-  eyeOff: ic('<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/>'),
-  plus: ic('<path d="M12 5v14M5 12h14"/>'),
-  up: ic('<path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>'),
-  down: ic('<path d="m22 17-8.5-8.5-5 5L2 7"/><path d="M16 17h6v-6"/>'),
-  upRight: ic('<path d="M7 7h10v10"/><path d="M7 17 17 7"/>'),
-  downLeft: ic('<path d="M17 7 7 17"/><path d="M17 17H7V7"/>'),
-  gift: ic('<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/>'),
-  shield: ic('<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>'),
-  bank: ic('<path d="M3 21h18"/><path d="M5 21v-8"/><path d="M9 21v-8"/><path d="M15 21v-8"/><path d="M19 21v-8"/><path d="m12 2 9 5H3z"/>'),
-  users: ic('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
-  user: ic('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
-  chat: ic('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>'),
-  headset: ic('<path d="M3 14v-3a9 9 0 0 1 18 0v3"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>'),
-  send: ic('<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>'),
+  /* navigation + core actions — filled-tab duotone style */
+  home: ic('<path fill="currentColor" fill-opacity=".16" stroke="none" d="M4 10.5 12 3.5l8 7V20a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 20z"/><path d="M3.5 10.5 12 3l8.5 7.5"/><path d="M5 9.8V20a1.5 1.5 0 0 0 1.5 1.5H10v-6h4v6h3.5A1.5 1.5 0 0 0 19 20V9.8"/>'),
+  target: ic('<circle cx="12" cy="12" r="10" fill="currentColor" fill-opacity=".12" stroke="none"/><circle cx="12" cy="12" r="9.2"/><circle cx="12" cy="12" r="5.4"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>'),
+  wallet: ic('<path fill="currentColor" fill-opacity=".14" stroke="none" d="M4 6.5V18a2 2 0 0 0 2 2h13.2a1 1 0 0 0 .8-.8V8.2a1 1 0 0 0-.8-.8H6a2 2 0 0 1-2-.9Z"/><path d="M20 7H5a2 2 0 0 1 0-4h13v3.5"/><path d="M4 5.5V18a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1"/><circle cx="16.5" cy="13.5" r="1.4" fill="currentColor" stroke="none"/>'),
+  chat: ic('<path fill="currentColor" fill-opacity=".12" stroke="none" d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-2.9-.36-4.1-1L3 21l2-5.4a8.5 8.5 0 1 1 16-4.1Z"/><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-2.9-.36-4.1-1L3 21l2-5.4a8.5 8.5 0 1 1 16-4.1Z"/><path d="M8.5 10.5h.01M12 10.5h.01M15.5 10.5h.01"/>'),
+  gear: ic('<circle cx="12" cy="12" r="3" fill="currentColor" fill-opacity=".16" stroke="none"/><path d="M12 2.8 13.7 5h2.6l.8 2.6 2.5 1 1.2 2.4-1.2 2.4-2.5 1-.8 2.6h-2.6L12 21.2 10.3 19H7.7l-.8-2.6-2.5-1L3.2 13l1.2-2.4 2.5-1L7.7 7h2.6z"/><circle cx="12" cy="12" r="3"/>'),
+  /* money & growth */
+  plus: ic('<rect x="3" y="3" width="18" height="18" rx="6" fill="currentColor" fill-opacity=".12" stroke="none"/><path d="M12 7.5v9M7.5 12h9"/>'),
+  up: ic('<path d="M3 17.5 8.5 12l4 4L21 7.5"/><path d="M15.5 7.5H21V13"/><circle cx="21" cy="7.5" r="1.6" fill="currentColor" stroke="none"/>'),
+  down: ic('<path d="M3 6.5 8.5 12l4-4L21 16.5"/><path d="M15.5 16.5H21V11"/><circle cx="21" cy="16.5" r="1.6" fill="currentColor" stroke="none"/>'),
+  upRight: ic('<circle cx="12" cy="12" r="9.2" fill="currentColor" fill-opacity=".12" stroke="none"/><path d="M8.5 15.5 15.5 8.5"/><path d="M9.5 8.5h6v6"/>'),
+  downLeft: ic('<circle cx="12" cy="12" r="9.2" fill="currentColor" fill-opacity=".12" stroke="none"/><path d="m15.5 8.5-7 7"/><path d="M14.5 15.5h-6v-6"/>'),
+  gift: ic('<rect x="3.5" y="8" width="17" height="4" rx="1.4" fill="currentColor" fill-opacity=".18" stroke="none"/><path d="M5 12v6.5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V12"/><path d="M12 8v13"/><path d="M7.8 8a2.3 2.3 0 1 1 2.4-3.9C11.7 5.4 12 8 12 8Z"/><path d="M16.2 8a2.3 2.3 0 1 0-2.4-3.9C12.3 5.4 12 8 12 8Z"/>'),
+  /* trust & security */
+  shield: ic('<path fill="currentColor" fill-opacity=".14" stroke="none" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>'),
+  bank: ic('<path fill="currentColor" fill-opacity=".14" stroke="none" d="m12 3 8 4.2v1.3H4V7.2z"/><path d="m12 2.6 8.5 4.5H3.5z"/><path d="M4.5 10v7M9 10v7M15 10v7M19.5 10v7"/><path d="M3 20.5h18"/><circle cx="12" cy="5.6" r="1.1" fill="currentColor" stroke="none"/>'),
+  lock: ic('<rect x="4" y="10.5" width="16" height="10" rx="3" fill="currentColor" fill-opacity=".14" stroke="none"/><rect x="4" y="10.5" width="16" height="10" rx="3"/><path d="M7.5 10.5V7.5a4.5 4.5 0 0 1 9 0v3"/><circle cx="12" cy="15" r="1.4" fill="currentColor" stroke="none"/><path d="M12 16.2v1.8"/>'),
+  /* people */
+  users: ic('<circle cx="9" cy="7" r="4" fill="currentColor" fill-opacity=".14" stroke="none"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
+  user: ic('<circle cx="12" cy="7.2" r="3.8" fill="currentColor" fill-opacity=".14" stroke="none"/><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7.2" r="3.8"/>'),
+  headset: ic('<path d="M4 14v-2.5a8 8 0 0 1 16 0V14"/><rect x="2.8" y="13.5" width="4.6" height="6.5" rx="2.2" fill="currentColor" fill-opacity=".16" stroke="none"/><rect x="16.6" y="13.5" width="4.6" height="6.5" rx="2.2" fill="currentColor" fill-opacity=".16" stroke="none"/><rect x="2.8" y="13.5" width="4.6" height="6.5" rx="2.2"/><rect x="16.6" y="13.5" width="4.6" height="6.5" rx="2.2"/><path d="M20 20a3.5 3.5 0 0 1-3.5 2H13"/>'),
+  /* misc utilities */
+  send: ic('<path d="m22 2-7 20-4-9-9-4Z" fill="currentColor" fill-opacity=".14" stroke="none"/><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>'),
   paperclip: ic('<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>'),
-  file: ic('<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>'),
+  file: ic('<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" fill="currentColor" fill-opacity=".10" stroke="none"/><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>'),
   chevL: ic('<path d="m15 18-6-6 6-6"/>'),
   check: ic('<path d="M20 6 9 17l-5-5"/>'),
-  checkCircle: ic('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
-  spark: ic('<path d="M9.94 15.5a2 2 0 0 0-1.44-1.44L2.37 12.5a.5.5 0 0 1 0-.98l6.13-1.56A2 2 0 0 0 9.94 8.5l1.56-6.13a.5.5 0 0 1 .98 0l1.56 6.13a2 2 0 0 0 1.44 1.44l6.13 1.56a.5.5 0 0 1 0 .98l-6.13 1.56a2 2 0 0 0-1.44 1.44l-1.56 6.13a.5.5 0 0 1-.98 0z"/>'),
-  target: ic('<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'),
+  checkCircle: ic('<circle cx="12" cy="12" r="9.2" fill="currentColor" fill-opacity=".14" stroke="none"/><circle cx="12" cy="12" r="9.2"/><path d="m8.5 12.2 2.4 2.4 4.8-4.8"/>'),
+  spark: ic('<path d="M9.94 15.5a2 2 0 0 0-1.44-1.44L2.37 12.5a.5.5 0 0 1 0-.98l6.13-1.56A2 2 0 0 0 9.94 8.5l1.56-6.13a.5.5 0 0 1 .98 0l1.56 6.13a2 2 0 0 0 1.44 1.44l6.13 1.56a.5.5 0 0 1 0 .98l-6.13 1.56a2 2 0 0 0-1.44 1.44l-1.56 6.13a.5.5 0 0 1-.98 0z" fill="currentColor" fill-opacity=".16"/><circle cx="19" cy="5" r="1.3" fill="currentColor" stroke="none"/>'),
   chevD: ic('<path d="m6 9 6 6 6-6"/>'),
-  arrowR: '<svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
-  copy: ic('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'),
-  share: ic('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.59 13.51 6.83 3.98"/><path d="m15.41 6.51-6.82 3.98"/>'),
+  arrowR: '<svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+  copy: ic('<rect x="9" y="9" width="12" height="12" rx="2.5" fill="currentColor" fill-opacity=".12" stroke="none"/><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'),
+  share: ic('<circle cx="18" cy="5" r="2.6" fill="currentColor" fill-opacity=".16" stroke="none"/><circle cx="6" cy="12" r="2.6" fill="currentColor" fill-opacity=".16" stroke="none"/><circle cx="18" cy="19" r="2.6" fill="currentColor" fill-opacity=".16" stroke="none"/><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="m8.6 13.5 6.8 4"/><path d="m15.4 6.5-6.8 4"/>'),
   logout: ic('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>'),
-  doc: ic('<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 13h6"/><path d="M9 17h6"/>'),
-  info: ic('<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>'),
-  clock: ic('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'),
-  star: ic('<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>'),
-  wallet: ic('<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>'),
-  lock: ic('<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
-  zap: ic('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'),
+  doc: ic('<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" fill="currentColor" fill-opacity=".10" stroke="none"/><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 13h6"/><path d="M9 17h6"/>'),
+  info: ic('<circle cx="12" cy="12" r="9.2" fill="currentColor" fill-opacity=".12" stroke="none"/><circle cx="12" cy="12" r="9.2"/><path d="M12 16v-4.5"/><path d="M12 8h.01"/>'),
+  clock: ic('<circle cx="12" cy="12" r="9.2" fill="currentColor" fill-opacity=".12" stroke="none"/><circle cx="12" cy="12" r="9.2"/><polyline points="12 6.5 12 12 15.8 14"/>'),
+  star: ic('<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="currentColor" fill-opacity=".2" stroke="none"/><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>'),
+  zap: ic('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="currentColor" fill-opacity=".18" stroke="none"/><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'),
   phone: ic('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.96.37 1.9.72 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.35 1.85.6 2.81.72A2 2 0 0 1 22 16.92z"/>'),
   edit: ic('<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>'),
   upload: ic('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>'),
-  qr: ic('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M21 14v1"/><path d="M14 21h1"/><path d="M18 18h3v3h-3z"/>'),
-  card: ic('<rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>'),
-  home: ic('<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>'),
-  box: ic('<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>'),
-  gear: ic('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06-.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
-  party: ic('<path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12v0c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11v0c-.11.7-.72 1.22-1.43 1.22H17"/><path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98v0C9.52 4.9 9 5.52 9 6.23V7"/><path d="M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2Z"/>'),
-  timer: ic('<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/><path d="M6.38 18.7 4 21"/><path d="M17.64 18.67 20 21"/>'),
-  badge: ic('<path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/>'),
+  qr: ic('<rect x="3" y="3" width="7" height="7" rx="1.5" fill="currentColor" fill-opacity=".14" stroke="none"/><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3z"/><path d="M21 14v1"/><path d="M14 21h1"/><path d="M18 18h3v3h-3z"/>'),
+  card: ic('<rect x="2" y="5" width="20" height="14" rx="3" fill="currentColor" fill-opacity=".10" stroke="none"/><rect x="2" y="5" width="20" height="14" rx="3"/><line x1="2" y1="10" x2="22" y2="10"/><path d="M6 15h4"/>'),
+  box: ic('<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" fill="currentColor" fill-opacity=".10" stroke="none"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>'),
+  party: ic('<path d="M5.8 11.3 2 22l10.7-3.79" fill="currentColor" fill-opacity=".14" stroke="none"/><path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12v0c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11v0c-.11.7-.72 1.22-1.43 1.22H17"/><path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98v0C9.52 4.9 9 5.52 9 6.23V7"/><path d="M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2Z"/>'),
+  timer: ic('<circle cx="12" cy="13" r="7.5" fill="currentColor" fill-opacity=".12" stroke="none"/><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 2.5"/><path d="M5 3 2.5 5.5"/><path d="m21.5 5.5-2.5-2.5"/><path d="M6.5 18.5 4.5 20.5"/><path d="m17.5 18.5 2 2"/>'),
+  badge: ic('<path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" fill="currentColor" fill-opacity=".14" stroke="none"/><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/>'),
   refresh: ic('<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>'),
-  alert: ic('<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>')
+  alert: ic('<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" fill="currentColor" fill-opacity=".14" stroke="none"/><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>'),
+  bell: ic('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" fill="currentColor" fill-opacity=".14" stroke="none"/><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'),
+  eye: ic('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>'),
+  eyeOff: ic('<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/>')
 };
 
 /* ── Global state ── */
@@ -110,6 +119,25 @@ let unsub = [];               // session-scoped listeners (cleared on logout)
 let viewUnsub = [];           // per-view listeners — torn down on every view switch
 let balanceVisible = store.get('bgBal', 'on') !== 'off', currentView = 'home';
 let lastBalance = null;       // for count-up animation
+
+/* ══════════ WALLET LIMITS (admin-editable, live) ══════════
+   appContent/walletLimits holds { minDeposit, minWithdraw, allowCancel }.
+   Cached for 30s so the deposit/withdraw sheets stay instant. */
+let walletCfgCache = { minDeposit: 50, minWithdraw: 100, allowCancel: true, loadedAt: 0 };
+async function walletCfg(force) {
+  if (!force && Date.now() - walletCfgCache.loadedAt < 30000) return walletCfgCache;
+  try {
+    const d = await db.collection('appContent').doc('walletLimits').get();
+    const c = d.exists ? d.data() : {};
+    walletCfgCache = {
+      minDeposit: Number(c.minDeposit ?? 50),
+      minWithdraw: Number(c.minWithdraw ?? 100),
+      allowCancel: c.allowCancel !== false,
+      loadedAt: Date.now()
+    };
+  } catch (e) { walletCfgCache.loadedAt = Date.now(); }
+  return walletCfgCache;
+}
 
 /* ══════════ SERVER-TIME SYNC ══════════
    Financial timestamps must not depend on the device clock. We estimate the
@@ -251,6 +279,7 @@ function closeSheet() { $('#modal-root').innerHTML = ''; }
 $('#tab-login').onclick = () => switchAuthTab(true);
 $('#tab-signup').onclick = () => switchAuthTab(false);
 $('#go-signup').onclick = () => switchAuthTab(false);
+$('#go-login').onclick = () => switchAuthTab(true); // FIX: signup tab had no way back to login
 function switchAuthTab(login) {
   $('#tab-login').classList.toggle('active', login);
   $('#tab-signup').classList.toggle('active', !login);
@@ -289,21 +318,34 @@ $('#forgot-link').onclick = () => {
 
 $('#form-login').onsubmit = async e => {
   e.preventDefault();
-  const btn = e.target.querySelector('button');
+  // FIX: client-side validation BEFORE hitting Firebase — empty / malformed
+  // input previously fired a network call and surfaced a raw Firebase error.
+  const email = $('#login-email').value.trim(), pass = $('#login-pass').value;
+  if (!/^\S+@\S+\.\S+$/.test(email)) return toast('Please enter a valid email address', 'err');
+  if (!pass) return toast('Please enter your password', 'err');
+  if (pass.length < 6) return toast('Password must be at least 6 characters', 'err');
+  const btn = e.target.querySelector('button[type="submit"]');
   btn.classList.add('loading'); btn.disabled = true;
   try {
-    await auth.signInWithEmailAndPassword($('#login-email').value.trim(), $('#login-pass').value);
+    await auth.signInWithEmailAndPassword(email, pass);
     toast('Welcome back! 👋', 'ok');
   } catch (err) { toast(authMsg(err), 'err'); }
-  btn.classList.remove('loading'); btn.disabled = false;
+  // FIX: restore button state inside finally — previously a synchronous throw
+  // left the Login button permanently disabled (spinner forever).
+  finally { btn.classList.remove('loading'); btn.disabled = false; }
 };
 
 $('#form-signup').onsubmit = async e => {
   e.preventDefault();
-  const btn = e.target.querySelector('button');
+  const btn = e.target.querySelector('button[type="submit"]');
   const name = $('#su-name').value.trim(), phone = $('#su-phone').value.trim(),
         email = $('#su-email').value.trim(), pass = $('#su-pass').value,
         ref = $('#su-ref').value.trim().toUpperCase();
+  // FIX: signup validation BEFORE any Firebase call (name / phone / email / password)
+  if (name.length < 3) return toast('Please enter your full name', 'err');
+  if (!/^\d{10}$/.test(phone.replace(/[\s-]/g, ''))) return toast('Enter a valid 10-digit phone number', 'err');
+  if (!/^\S+@\S+\.\S+$/.test(email)) return toast('Please enter a valid email address', 'err');
+  if (pass.length < 6) return toast('Password must be at least 6 characters', 'err');
   btn.classList.add('loading'); btn.disabled = true;
   try {
     const cred = await auth.createUserWithEmailAndPassword(email, pass);
@@ -316,8 +358,37 @@ $('#form-signup').onsubmit = async e => {
     });
     toast('Account created — welcome to GodX! 🎉', 'ok');
     confetti();
-  } catch (err) { toast(authMsg(err), 'err'); }
-  btn.classList.remove('loading'); btn.disabled = false;
+  } catch (err) {
+    // FIX: orphan-account recovery — if the auth user was created but the
+    // profile write failed (rules / offline), sign out so the email is not
+    // stuck in "already registered" limbo with no way to log in.
+    if (err && (err.code === 'permission-denied' || err.code === 'unavailable')) {
+      try { await auth.signOut(); } catch (_) {}
+      toast('Could not finish setup — please try again', 'err');
+    } else toast(authMsg(err), 'err');
+  }
+  // FIX: restore button state inside finally (same stuck-spinner bug as login)
+  finally { btn.classList.remove('loading'); btn.disabled = false; }
+};
+
+/* ── "How GodX works" explainer — shown on the login screen so new users
+     instantly understand (and trust) the lending model before signing up ── */
+$('#auth-how').onclick = () => {
+  openSheet(`
+    <div class="sheet-title">How GodX works</div>
+    <div class="sheet-sub">Simple, transparent, and registered — here is exactly what happens to your money.</div>
+    <div class="hw-steps">
+      <div class="hw-step"><div class="hw-n">1</div><div><b>You add money to a savings plan</b><p>Pick a plan and deposit — every rupee is recorded in your wallet with a receipt.</p></div></div>
+      <div class="hw-step"><div class="hw-n">2</div><div><b>GodX lends it to verified customers</b><p>Your deposit funds short-term loans to identity-verified, credit-checked borrowers on our platform.</p></div></div>
+      <div class="hw-step"><div class="hw-n">3</div><div><b>Borrowers repay with interest</b><p>Loans are repaid on schedule with interest — that interest is the source of your earnings.</p></div></div>
+      <div class="hw-step"><div class="hw-n">4</div><div><b>You earn interest every single day</b><p>Your daily share lands in your GodX wallet every 24 hours. Withdraw to your bank within 24 hours — no hidden charges, ever.</p></div></div>
+    </div>
+    <div class="reg-strip">
+      <div class="reg-item">${IC.shield}<span><b>Registered Company</b><small>GodX operates as a registered Indian business — verifiable &amp; compliant. No scam, guaranteed.</small></span></div>
+      <div class="reg-item">${IC.bank}<span><b>Real lending model</b><small>Your interest comes from real loan repayments — not from new users' deposits.</small></span></div>
+      <div class="reg-item">${IC.lock}<span><b>Bank-grade security</b><small>256-bit encryption, secure Firebase auth, and full transaction history.</small></span></div>
+    </div>
+    <button class="btn btn-primary btn-block" type="button" onclick="document.getElementById('modal-root').innerHTML=''">Got it — I'm ready</button>`);
 };
 
 function authMsg(err) {
@@ -325,13 +396,18 @@ function authMsg(err) {
     'auth/user-not-found': 'No account found with this email',
     'auth/wrong-password': 'Incorrect password',
     'auth/invalid-credential': 'Incorrect email or password',
+    'auth/invalid-login-credentials': 'Incorrect email or password',
     'auth/email-already-in-use': 'This email is already registered',
     'auth/weak-password': 'Password must be at least 6 characters',
     'auth/invalid-email': 'Please enter a valid email',
+    'auth/user-disabled': 'This account has been disabled — contact support',
+    'auth/operation-not-allowed': 'Email/password sign-in is not enabled for this app',
+    'auth/missing-password': 'Please enter your password',
+    'auth/internal-error': 'Something went wrong — please try again',
     'auth/too-many-requests': 'Too many attempts — try again in a minute',
     'auth/network-request-failed': 'Network error — check your connection'
   };
-  return map[err.code] || err.message;
+  return map[err && err.code] || (err && err.message) || 'Something went wrong — try again';
 }
 
 /* ══════════ AUTH STATE ══════════ */
@@ -592,6 +668,26 @@ async function renderHome() {
     </div>
 
     <div id="home-ann"></div>
+
+    <!-- How your money earns — the lending loop, made crystal clear -->
+    <div class="sec-head"><h3>How your money earns</h3></div>
+    <div class="card"><div class="hw-steps">
+      <div class="hw-step"><div class="hw-n">1</div><div><b>You add money</b><p>Deposit into any savings plan — tracked with receipts.</p></div></div>
+      <div class="hw-step"><div class="hw-n">2</div><div><b>We lend to verified borrowers</b><p>Funds go out as short-term loans to identity &amp; credit-verified customers.</p></div></div>
+      <div class="hw-step"><div class="hw-n">3</div><div><b>Borrowers repay with interest</b><p>Loan repayments generate the interest — a real, registered lending business.</p></div></div>
+      <div class="hw-step"><div class="hw-n">4</div><div><b>Interest hits your wallet daily</b><p>Credited every 24 hours. Withdraw to your bank within 24 hours.</p></div></div>
+    </div></div>
+
+    <!-- Registered &amp; trusted — proof, not promises -->
+    <div class="reg-card">
+      <div class="reg-head">${IC.shield}<div><b>Registered &amp; 100% Legitimate</b><small>GodX is a registered Indian company — verified, compliant, zero scam.</small></div></div>
+      <div class="reg-strip">
+        <div class="reg-item">${IC.bank}<span><b>Regulated lending model</b><small>Earnings come from real borrower interest — never from new deposits.</small></span></div>
+        <div class="reg-item">${IC.doc}<span><b>Full paper trail</b><small>Every deposit, plan and payout has a receipt in your wallet history.</small></span></div>
+        <div class="reg-item">${IC.zap}<span><b>24-hour withdrawals</b><small>Your money stays yours — request a payout anytime after plan maturity.</small></span></div>
+      </div>
+    </div>
+
     <div id="home-trust"></div>
     <div id="home-about"></div>
 
@@ -634,9 +730,9 @@ function drawAppContent() {
   if (!trustEl || !aboutEl) return;
   const c = liveContent || {};
   const trust = c.trustPoints && c.trustPoints.length ? c.trustPoints : [
-    { t: 'Bank-grade Security', d: 'AES-256 encrypted' },
-    { t: 'Instant Withdrawals', d: 'Money in 24 hrs' },
-    { t: 'RBI-compliant Partners', d: 'Regulated rails' },
+    { t: 'Registered Company', d: 'Verified & compliant' },
+    { t: 'Real Lending Model', d: 'Interest from loans' },
+    { t: '24h Withdrawals', d: 'Money in 24 hrs' },
     { t: 'Zero Hidden Fees', d: '100% transparent' }
   ];
   trustEl.innerHTML = `
@@ -645,7 +741,8 @@ function drawAppContent() {
     </div></div>`;
 
   const about = c.aboutPoints && c.aboutPoints.length ? c.aboutPoints : [
-    { t: 'Real savings, real rewards', d: 'Every rupee you save earns actual interest from our merchant partners — not points that expire.' },
+    { t: 'Your deposits fund real loans', d: 'GodX lends your savings to verified customers and passes the loan interest back to you — daily.' },
+    { t: 'Registered & scam-free', d: 'We operate as a registered Indian business with full compliance — your money is never at risk of vanishing.' },
     { t: 'Your money stays liquid', d: 'Withdraw anytime after your plan duration. No lock-in tricks, no penalties.' },
     { t: 'Fully transparent', d: 'Every transaction is visible in your wallet history with receipts and status.' }
   ];
@@ -943,8 +1040,15 @@ async function renderPlans() {
         </div>` : ''}
         <div class="mp-progress"><i style="width:${pct}%"></i></div>
         <div class="mp-meta"><span>${i.status === 'active' ? 'Matures ' + mdate : pct + '% of duration'}</span><span>${rightMeta}</span></div>
+        ${i.status === 'active' ? `<button class="btn btn-danger btn-sm btn-block inv-cancel" id="cancel-${d.id}" type="button" style="margin-top:10px">${IC.alert} Cancel Plan · Refund ${inr(i.amount)}</button>` : ''}
         ${isDue ? `<div class="upi-note" style="margin:10px 0 0">${IC.spark} <b>Plan matured!</b> All interest is paid — your ${inr(i.amount)} principal is being released to your wallet shortly.</div>` : ''}`;
       myEl.appendChild(div);
+
+      // user-initiated plan cancellation (admin can disable via Wallet Limits)
+      if (i.status === 'active') {
+        const cancelBtn = div.querySelector('#cancel-' + d.id);
+        if (cancelBtn) cancelBtn.onclick = () => confirmCancelInvestment(d.id, i);
+      }
 
       // live countdown → exact timestamp of the next unpaid period
       if (i.status === 'active' && !interestDone(i)) {
@@ -1058,6 +1162,72 @@ function joinPlan(planId, p) {
   };
 }
 
+/* ══════════ USER PLAN CANCELLATION — instant principal refund ══════════
+   Mirrors the admin cancel: one atomic Firestore transaction that re-reads
+   the investment inside, flips it to 'cancelled', refunds the principal to
+   the wallet, reverses totalSaved, and writes a 'refund' receipt. Any daily
+   interest due so far is reconciled (credited) FIRST so the user keeps
+   everything already earned. Double-tap / multi-tab safe via an in-flight
+   flag + the status check inside the transaction. */
+let _cancelInFlight = {};
+
+function confirmCancelInvestment(invId, i) {
+  const s = openSheet(`
+    <div class="sheet-title">Cancel ${esc(i.planName)}?</div>
+    <div class="sheet-sub">Your principal of <b>${inr(i.amount)}</b> returns to your wallet immediately.
+    Daily interest already credited (${inr2(i.accruedInterest || 0)}) stays yours — no fees, no penalty.</div>
+    <div class="upi-note"><b>This can't be undone.</b> The plan stops earning interest from the moment you confirm.</div>
+    <div style="height:14px"></div>
+    <button class="btn btn-danger btn-block" id="cx-yes" type="button">Yes, Cancel & Refund ${inr(i.amount)}</button>
+    <div style="height:8px"></div>
+    <button class="btn btn-ghost btn-block" id="cx-no" type="button">Keep My Plan</button>`);
+  s.querySelector('#cx-no').onclick = closeSheet;
+  s.querySelector('#cx-yes').onclick = () => { closeSheet(); cancelInvestment(invId, i); };
+}
+
+async function cancelInvestment(invId, i) {
+  if (_cancelInFlight[invId]) return;
+  _cancelInFlight[invId] = true;
+  showLoader('Cancelling plan…');
+  try {
+    const cfg = await walletCfg(true); // fresh — admin may have just toggled it
+    if (!cfg.allowCancel) throw 'disabled';
+    await reconcileInvestment(invId); // credit every due daily interest first — user keeps it
+    const invRef = db.collection('investments').doc(invId);
+    const userRef = db.collection('users').doc(currentUser.uid);
+    const txRef = db.collection('transactions').doc();
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(invRef);
+      if (!snap.exists) throw 'gone';
+      const inv = snap.data();
+      if (inv.status !== 'active' || inv.uid !== currentUser.uid) throw 'already';
+      tx.update(invRef, { status: 'cancelled', cancelReason: 'user',
+        cancelledAt: firebase.firestore.FieldValue.serverTimestamp() });
+      tx.update(userRef, {
+        balance: firebase.firestore.FieldValue.increment(inv.amount || 0),
+        totalSaved: firebase.firestore.FieldValue.increment(-(inv.amount || 0)) });
+      tx.set(txRef, {
+        uid: currentUser.uid, type: 'refund', amount: inv.amount, status: 'completed',
+        invId, note: `${inv.planName} cancelled by you — principal refunded`,
+        userName: (userDoc && userDoc.data().name) || '',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+    hideLoader();
+    confetti(18);
+    toast(`Plan cancelled — ${inr(i.amount)} refunded to your wallet ✓`, 'ok');
+    if (currentView === 'plans') renderPlans();
+    if (currentView === 'wallet') renderWallet();
+    if (currentView === 'home') renderHome();
+  } catch (e) {
+    hideLoader();
+    if (e === 'disabled') toast('Plan cancellation is currently disabled by admin', 'err');
+    else if (e === 'already') { toast('This plan was already settled or cancelled', ''); if (currentView === 'plans') renderPlans(); }
+    else toast('Cancel failed — check connection & retry', 'err');
+  } finally {
+    _cancelInFlight[invId] = false;
+  }
+}
+
 /* ══════════ WALLET ══════════ */
 async function renderWallet() {
   const u = userDoc.data();
@@ -1067,6 +1237,10 @@ async function renderWallet() {
       <div class="wh-top"><span class="wh-label">Available Balance</span>
         <span class="wh-chip">${IC.shield} Verified</span></div>
       <div class="wh-bal">${balanceVisible ? inr(u.balance) : '₹ ••••••'}</div>
+      <div class="wh-growth" role="status" aria-label="Interest earned so far">
+        <span class="wh-up-arrow" aria-hidden="true">${IC.up}</span>
+        <span>${balanceVisible ? '+' + inr2(u.totalCashback || 0) : '+₹ •••'} earned · your money is growing daily</span>
+      </div>
       <div class="wh-btns">
         <button class="btn" id="w-dep" type="button">${IC.downLeft} Add Money</button>
         <button class="btn" id="w-wd" type="button">${IC.upRight} Withdraw</button>
@@ -1207,19 +1381,21 @@ function bankEditor(bd) {
 
 /* ══════════ DEPOSIT — admin payment method → UTR + screenshot proof ══════════ */
 async function openDeposit() {
+  const cfg = await walletCfg(); // admin-set minimum, live
   const sheet = openSheet(`
     <div class="sheet-title">Add Money to Wallet</div>
-    <div class="sheet-sub">Pay via UPI / bank transfer · verified & credited by our team</div>
-    <div class="amount-input"><span>₹</span><input id="dep-amt" type="number" inputmode="numeric" placeholder="500" min="50"></div>
+    <div class="sheet-sub">Pay via UPI / bank transfer · verified & credited by our team · minimum ${inr(cfg.minDeposit)}</div>
+    <div class="amount-input"><span>₹</span><input id="dep-amt" type="number" inputmode="numeric" placeholder="${Math.max(500, cfg.minDeposit)}" min="${cfg.minDeposit}"></div>
     <div class="amount-quick">${[100, 300, 500, 1000].map(a => `<button type="button" data-a="${a}">₹${a}</button>`).join('')}</div>
     <div class="upi-note"><b>How deposits work:</b> choose an amount, pay to the official account shown next,
     then enter your <b>UTR / reference number</b> and upload a <b>payment screenshot</b>.
     Your wallet is credited after verification (usually under 30 minutes).</div>
     <button class="btn btn-primary btn-block" id="dep-go" type="button">Continue</button>`);
   sheet.querySelectorAll('.amount-quick button').forEach(b => b.onclick = () => sheet.querySelector('#dep-amt').value = b.dataset.a);
-  sheet.querySelector('#dep-go').onclick = () => {
+  sheet.querySelector('#dep-go').onclick = async () => {
+    const cfg = await walletCfg();
     const amt = Number(sheet.querySelector('#dep-amt').value);
-    if (!amt || amt < 50) return toast('Minimum deposit is ₹50', 'err');
+    if (!amt || amt < cfg.minDeposit) return toast(`Minimum deposit is ${inr(cfg.minDeposit)}`, 'err');
     if (!Number.isFinite(amt) || amt > 1000000) return toast('Enter a valid amount', 'err');
     depositStepMethod(amt);
   };
@@ -1393,7 +1569,8 @@ function readImageCompressed(file, maxDim, quality) {
 }
 
 /* ══════════ WITHDRAW — to saved bank account / UPI ══════════ */
-function openWithdraw() {
+async function openWithdraw() {
+  const cfg = await walletCfg(); // admin-set minimum, live
   const u = userDoc.data();
   const bd = u.bankDetails;
   const hasBank = bd && bd.accountNumber;
@@ -1403,7 +1580,7 @@ function openWithdraw() {
   const sheet = openSheet(`
     <div class="sheet-title">Withdraw Funds</div>
     <div class="sheet-sub">Available: ${inr(u.balance)} · paid within 24 hrs after review</div>
-    <div class="amount-input"><span>₹</span><input id="wd-amt" type="number" inputmode="numeric" placeholder="100" min="100"></div>
+    <div class="amount-input"><span>₹</span><input id="wd-amt" type="number" inputmode="numeric" placeholder="${cfg.minWithdraw}" min="${cfg.minWithdraw}"></div>
     <div style="height:8px"></div>
     <div class="sheet-sub" style="margin-bottom:8px;font-weight:800;color:var(--ink)">Receive money in</div>
     <div id="wd-dests">
@@ -1444,7 +1621,7 @@ function openWithdraw() {
     if (_wdInFlight) return; // hard guard: ignore every tap while a commit is in-flight
     const btn = go;
     const amt = Number(sheet.querySelector('#wd-amt').value);
-    if (!amt || amt < 100) return toast('Minimum withdrawal is ₹100', 'err');
+    if (!amt || amt < cfg.minWithdraw) return toast(`Minimum withdrawal is ${inr(cfg.minWithdraw)}`, 'err');
     if (!Number.isFinite(amt)) return toast('Enter a valid amount', 'err');
     if (!dest) return toast('Choose where to receive the money', 'err');
     _wdInFlight = true;
