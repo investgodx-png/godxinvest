@@ -110,7 +110,9 @@ const IC = {
   alert: ic('<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" fill="currentColor" fill-opacity=".14" stroke="none"/><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>'),
   bell: ic('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" fill="currentColor" fill-opacity=".14" stroke="none"/><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'),
   eye: ic('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>'),
-  eyeOff: ic('<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/>')
+  eyeOff: ic('<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.4 10.4 0 0 1 12 5c7 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/>'),
+  trend: ic('<rect x="3" y="4" width="18" height="16" rx="4.5" fill="currentColor" fill-opacity=".13" stroke="none"/><rect x="3" y="4" width="18" height="16" rx="4.5"/><path d="m7 14.5 3-3 2.5 2.5L17 9.5"/><path d="M14 9.5h3v3"/>'),
+  crown: ic('<path d="m3.5 8 4 3.5L12 5l4.5 6.5 4-3.5-1.8 9.5a2 2 0 0 1-2 1.5H7.3a2 2 0 0 1-2-1.5Z" fill="currentColor" fill-opacity=".16" stroke="none"/><path d="m3.5 8 4 3.5L12 5l4.5 6.5 4-3.5-1.8 9.5a2 2 0 0 1-2 1.5H7.3a2 2 0 0 1-2-1.5Z"/>')
 };
 
 /* ── Global state ── */
@@ -457,7 +459,7 @@ function bindUserListener() {
    Plans, announcements, payment methods & home content update LIVE
    the moment the admin changes them — no app restart, and no
    Firestore composite index required (sorting done client-side). */
-let livePlans = null, liveAnnouncements = null, liveContent = null, liveReferral = null, liveShareCfg = null;
+let livePlans = null, liveAnnouncements = null, liveContent = null, liveReferral = null, liveShareCfg = null, livePopup = null;
 
 function bindContentListeners() {
   // Plans (admin-edited) — live
@@ -496,6 +498,91 @@ function bindContentListeners() {
   unsub.push(db.collection('appContent').doc('share').onSnapshot(d => {
     liveShareCfg = d.exists ? d.data() : {};
   }));
+
+  // Welcome popup — admin-controlled message + buttons shown on every app
+  // open (session-dismissed per content version). Admin can hide / edit it
+  // live from Admin panel → Popup Message.
+  unsub.push(db.collection('appContent').doc('popup').onSnapshot(d => {
+    livePopup = d.exists ? d.data() : null;
+    maybeShowWelcomePopup();
+  }, () => { livePopup = null; }));
+}
+
+/* ══════════ ADMIN WELCOME POPUP ══════════
+   Data model (appContent/popup):
+     enabled : bool      — master switch (admin can hide instantly)
+     title, body, icon   — message content (icon: emoji or '')
+     showOn  : 'every' | 'once'  — every app open vs once per content version
+     primaryBtn  : { label, action }   — action: 'close'|'plans'|'wallet'|'deposit'|'support'|'refer'|'url'
+     primaryUrl  : string (when action === 'url')
+     secondaryBtn: { label } | null    — always just closes
+   Dismissal is remembered per content version so editing the popup re-shows
+   it to users who dismissed the old version. */
+function popupVersionOf(p) {
+  return (p.title || '') + '|' + (p.body || '') + '|' + ((p.primaryBtn && p.primaryBtn.label) || '') +
+         '|' + (p.icon || '') + '|' + ((p.updatedAt && p.updatedAt.seconds) || 0);
+}
+function popupIconSvg(p) {
+  const raw = (p.icon || '').trim();
+  if (raw && raw.length <= 4) return `<span style="font-size:2rem;line-height:1">${esc(raw)}</span>`;
+  return IC.spark;
+}
+function maybeShowWelcomePopup() {
+  const p = livePopup;
+  if (!p || p.enabled === false || (!p.title && !p.body)) return;
+  if (!currentUser || $('#app').classList.contains('hidden')) return; // only inside the app
+  const ver = popupVersionOf(p);
+  if (p.showOn !== 'every' && store.get('gxp_seen') === ver) return;
+  showWelcomePopup(p, ver);
+}
+function showWelcomePopup(p, ver) {
+  const root = $('#gx-popup');
+  if (!root || !root.hidden) return; // one at a time
+  $('#gxp-ic').innerHTML = popupIconSvg(p);
+  $('#gxp-title').textContent = p.title || '';
+  $('#gxp-title').style.display = p.title ? '' : 'none';
+  $('#gxp-body').textContent = p.body || '';
+  $('#gxp-body').style.display = p.body ? '' : 'none';
+  const btns = $('#gxp-btns');
+  btns.innerHTML = '';
+  const close = () => {
+    store.set('gxp_seen', ver);
+    root.classList.remove('show');
+    setTimeout(() => { root.hidden = true; }, 380);
+  };
+  const pb = p.primaryBtn || {};
+  if (pb.label) {
+    const b = document.createElement('button');
+    b.className = 'gxp-btn gxp-btn-primary'; b.type = 'button';
+    b.innerHTML = esc(pb.label) + ' ' + IC.arrowR;
+    b.onclick = () => {
+      close();
+      const act = pb.action || 'close';
+      if (act === 'plans' || act === 'wallet' || act === 'support') setTimeout(() => switchView(act), 300);
+      else if (act === 'deposit') setTimeout(() => { switchView('wallet'); setTimeout(() => openDeposit(), 380); }, 300);
+      else if (act === 'refer') setTimeout(() => openSharePicker(), 300);
+      else if (act === 'url' && p.primaryUrl) { try { window.open(p.primaryUrl, '_blank'); } catch (e) {} }
+    };
+    btns.appendChild(b);
+  }
+  if (p.secondaryBtn && p.secondaryBtn.label) {
+    const b2 = document.createElement('button');
+    b2.className = 'gxp-btn gxp-btn-soft'; b2.type = 'button';
+    b2.textContent = p.secondaryBtn.label;
+    b2.onclick = close;
+    btns.appendChild(b2);
+  }
+  if (!btns.children.length) {
+    const b = document.createElement('button');
+    b.className = 'gxp-btn gxp-btn-primary'; b.type = 'button';
+    b.innerHTML = 'Got it ' + IC.check;
+    b.onclick = close;
+    btns.appendChild(b);
+  }
+  $('#gxp-close').onclick = close;
+  $('#gxp-back').onclick = close;
+  root.hidden = false;
+  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.add('show')));
 }
 
 /* ══════════ REFERRAL / SHARE HELPERS ══════════ */
@@ -607,13 +694,23 @@ function renderHeader() {
                    wallet: ['Your money, always yours', 'My Wallet'], support: ['We are here to help', 'Support & Help'],
                    settings: ['Manage everything', 'Settings'] };
   const [sub, title] = titles[currentView];
+  const h = new Date().getHours();
+  const greet = h < 5 ? 'Late night saver 🌙' : h < 12 ? 'Good morning ☀️' : h < 17 ? 'Good afternoon ✦' : 'Good evening 🌙';
   $('#app-header').innerHTML = `
+    <div class="hd-aurora" aria-hidden="true">
+      <i class="hd-star hd-star-1"></i><i class="hd-star hd-star-2"></i><i class="hd-star hd-star-3"></i>
+      <i class="hd-star hd-star-4"></i><i class="hd-star hd-star-5"></i>
+      <i class="hd-beam"></i>
+    </div>
     <div class="hd-left">
-      <div class="hd-avatar">${esc((u.name || 'B')[0].toUpperCase())}</div>
-      <div class="hd-title"><small>${sub}</small><b>${esc(title)}</b></div>
+      <div class="hd-avatar-wrap">
+        <div class="hd-avatar">${esc((u.name || 'B')[0].toUpperCase())}</div>
+        <span class="hd-online" aria-hidden="true"></span>
+      </div>
+      <div class="hd-title"><small>${currentView === 'home' ? greet : sub}</small><b>${esc(title)}</b></div>
     </div>
     <div class="hd-right">
-      <button class="hd-icon" id="hd-bell" type="button" aria-label="Notifications">${IC.bell}<span class="hd-dot"></span></button>
+      <button class="hd-icon" id="hd-bell" type="button" aria-label="Notifications">${IC.bell}<span class="hd-dot"></span><span class="hd-ring" aria-hidden="true"></span></button>
     </div>`;
   $('#hd-bell').onclick = showNotifications;
 }
@@ -643,6 +740,112 @@ function switchView(v) {
   window.scrollTo({ top: 0 });
 }
 
+/* ══════════ HOME GROWTH CHART — 1-year outcome: GodX vs other platforms ══════════
+   Pure-canvas line/area chart (no library, zero network). Compares the growth
+   of the same ₹10,000 over 12 months: a typical FD/savings average (~6.5% p.a.,
+   simple accrual) vs a GodX plan at 24% p.a. credited & compounding daily.
+   Entrance sweep plays once per session; resize re-fits without replaying. */
+let _gxChartDone = false;
+function drawGrowthChart() {
+  const cv = document.getElementById('gx-chart');
+  if (!cv) return;
+  const win = document.getElementById('gx-chart-win');
+  const animate = !_gxChartDone && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  _gxChartDone = true;
+  const P = 10000, M = 12;
+  const godx = [], oth = [];
+  for (let m = 0; m <= M; m++) {
+    const d = 365 * m / M;
+    godx.push(P * Math.pow(1 + 0.24 / 365, d)); // daily-compounded plan rate
+    oth.push(P * (1 + 0.065 * d / 365));         // ~FD average, simple accrual
+  }
+  const endG = Math.round(godx[M]), endO = Math.round(oth[M]);
+  if (win) win.innerHTML = IC.trend + '<span>₹10,000 becomes <b>' + inr(endG) + '</b> with GodX — <b>+' + inr(endG - endO) + '</b> more than other platforms in 1 year</span>';
+
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = cv.clientWidth || 320, H = cv.clientHeight || 188;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const pad = { l: 10, r: 10, t: 26, b: 24 };
+  const lo = P * 0.98, hi = godx[M] * 1.035;
+  const X = i => pad.l + (W - pad.l - pad.r) * i / M;
+  const Y = v => pad.t + (H - pad.t - pad.b) * (1 - (v - lo) / (hi - lo));
+  const pts = a => a.map((v, i) => [X(i), Y(v)]);
+  const gP = pts(godx), oP = pts(oth);
+  function trace(p) {
+    ctx.beginPath();
+    ctx.moveTo(p[0][0], p[0][1]);
+    for (let i = 1; i < p.length; i++) {
+      const mx = (p[i - 1][0] + p[i][0]) / 2;
+      ctx.quadraticCurveTo(p[i - 1][0], p[i - 1][1], mx, (p[i - 1][1] + p[i][1]) / 2);
+    }
+    ctx.lineTo(p[p.length - 1][0], p[p.length - 1][1]);
+  }
+  function frame(t) {
+    ctx.clearRect(0, 0, W, H);
+    /* dashed grid + quarter labels */
+    ctx.strokeStyle = 'rgba(148,163,184,.22)'; ctx.lineWidth = 1; ctx.setLineDash([3, 5]);
+    for (let g = 1; g <= 3; g++) {
+      const y = pad.t + (H - pad.t - pad.b) * g / 4;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#94A3B8'; ctx.font = '700 9.5px Inter, sans-serif'; ctx.textAlign = 'center';
+    [['Today', 0], ['3 mo', 3], ['6 mo', 6], ['9 mo', 9], ['1 yr', 12]].forEach(L => ctx.fillText(L[0], X(L[1]), H - 7));
+    /* reveal clip — the lines sweep in from the left */
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pad.l + (W - pad.l - pad.r) * t + 4, H); ctx.clip();
+    /* GodX area fill */
+    trace(gP);
+    ctx.lineTo(gP[gP.length - 1][0], H - pad.b); ctx.lineTo(gP[0][0], H - pad.b); ctx.closePath();
+    const ag = ctx.createLinearGradient(0, pad.t, 0, H - pad.b);
+    ag.addColorStop(0, 'rgba(124,58,237,.30)'); ag.addColorStop(1, 'rgba(6,182,212,.02)');
+    ctx.fillStyle = ag; ctx.fill();
+    /* other platforms — flat dashed line */
+    trace(oP);
+    ctx.strokeStyle = '#A8B4C6'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]);
+    /* GodX — glowing aurora gradient line */
+    trace(gP);
+    const lg = ctx.createLinearGradient(pad.l, 0, W - pad.r, 0);
+    lg.addColorStop(0, '#7C3AED'); lg.addColorStop(.55, '#8B5CF6'); lg.addColorStop(1, '#06B6D4');
+    ctx.strokeStyle = lg; ctx.lineWidth = 2.8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(124,58,237,.5)'; ctx.shadowBlur = 9; ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.restore();
+    /* end dots + value tags once the sweep reaches the right edge */
+    if (t > .985) {
+      [[oP[M], '#94A3B8', endO, false], [gP[M], '#7C3AED', endG, true]].forEach(e => {
+        const p = e[0], col = e[1], val = e[2], isG = e[3];
+        ctx.beginPath(); ctx.arc(p[0], p[1], isG ? 5 : 4, 0, 7);
+        ctx.fillStyle = col;
+        if (isG) { ctx.shadowColor = 'rgba(6,182,212,.8)'; ctx.shadowBlur = 10; }
+        ctx.fill(); ctx.shadowBlur = 0;
+        ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+        ctx.font = '800 10.5px Inter, sans-serif'; ctx.textAlign = 'right';
+        ctx.fillStyle = isG ? '#5B21B6' : '#64748B';
+        ctx.fillText(inr(val), p[0] - 9, p[1] + (isG ? -4 : 13));
+      });
+    }
+  }
+  if (!animate) { frame(1); }
+  else {
+    const t0 = performance.now(), dur = 1150;
+    (function step(now) {
+      const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      frame(e);
+      if (k < 1 && document.body.contains(cv)) requestAnimationFrame(step);
+    })(t0);
+  }
+  /* re-fit on rotation / resize (no replay of the entrance sweep) */
+  if (!window._gxChartRs) {
+    window._gxChartRs = true;
+    let rsT;
+    window.addEventListener('resize', () => {
+      clearTimeout(rsT);
+      rsT = setTimeout(() => { if (currentView === 'home' && document.getElementById('gx-chart')) drawGrowthChart(); }, 180);
+    }, { passive: true });
+  }
+}
+
 /* ══════════ HOME ══════════ */
 async function renderHome() {
   const u = userDoc.data();
@@ -665,6 +868,21 @@ async function renderHome() {
         <button class="quick-item" data-q="withdraw"><div class="quick-ic qi-3">${IC.upRight}</div><span>Withdraw</span></button>
         <button class="quick-item" data-q="refer"><div class="quick-ic qi-4">${IC.gift}</div><span>Refer</span></button>
       </div>
+    </div>
+
+    <!-- Growth comparison — 1-year outcome: GodX vs other platforms -->
+    <div class="gx-chart-card">
+      <div class="gx-chart-head">
+        <div class="gx-chart-ic">${IC.trend}</div>
+        <div><b>1-Year Growth Outlook</b><span>Same ₹10,000 — very different outcome</span></div>
+      </div>
+      <div class="gx-chart-wrap"><canvas id="gx-chart"></canvas></div>
+      <div class="gx-chart-legend">
+        <span class="gx-lg gx-lg-godx"><i></i>GodX · daily interest</span>
+        <span class="gx-lg gx-lg-oth"><i></i>Other platforms · FD avg</span>
+      </div>
+      <div class="gx-chart-win" id="gx-chart-win"></div>
+      <p class="gx-chart-note">Illustrative projection over 12 months: GodX plan at 24%/yr, credited &amp; compounded daily, vs ~6.5% p.a. typical FD / savings average.</p>
     </div>
 
     <div id="home-ann"></div>
@@ -702,6 +920,7 @@ async function renderHome() {
   });
   $('#see-plans').onclick = () => switchView('plans');
   tilt3D('.balance-hero');
+  drawGrowthChart();
 
   try {
     const act = await db.collection('investments').where('uid', '==', currentUser.uid)
@@ -981,10 +1200,17 @@ const CountdownRegistry = {
 /* ══════════ PLANS ══════════ */
 async function renderPlans() {
   const el = $('#view-plans');
-  el.innerHTML = `<div class="banner banner-purple">${IC.spark}
-      <div><h4>Savings Plans with Daily Interest</h4>
-      <p>Interest lands in your wallet every 24 hours from the exact moment you join. Full terms on every plan.</p></div>
+  el.innerHTML = `<div class="plans-hero">
+      <span class="ph-tag">${IC.spark} Daily Interest</span>
+      <h2>Savings plans that pay you every 24 hours</h2>
+      <p>Interest lands in your wallet every 24 hours from the exact moment you join — full terms on every plan, zero hidden charges.</p>
+      <div class="ph-chips">
+        <span class="ph-chip">${IC.shield} RBI Registered</span>
+        <span class="ph-chip">${IC.zap} 24h Withdrawals</span>
+        <span class="ph-chip">${IC.checkCircle} 100% Transparent</span>
+      </div>
     </div>
+    <div class="sec-head"><h3>Choose your plan</h3></div>
     <div id="plans-list">${livePlans === null ? '<div class="skel skel-card"></div><div class="skel skel-card"></div>' : ''}</div>
     <div class="sec-head"><h3>My Active Plans</h3></div>
     <div id="my-plans"><div class="skel skel-card" style="height:130px"></div></div>`;
@@ -1074,21 +1300,27 @@ function drawPlansList() {
   livePlans.forEach(p => list.appendChild(planCard(p)));
 }
 
-const PLAN_COLORS = [['#16A34A', '#4ADE80'], ['#2563EB', '#60A5FA'], ['#1D4ED8', '#60A5FA'], ['#0D9488', '#5EEAD4']];
-const PLAN_ICONS = [IC.spark, IC.star, IC.zap, IC.gift];
+/* v22 — 6 jewel palettes + richer icon set; popular plans get a rotating conic border */
+const PLAN_COLORS = [['#059669', '#34D399'], ['#6D28D9', '#A78BFA'], ['#0891B2', '#67E8F9'], ['#B45309', '#FBBF24'], ['#BE185D', '#F472B6'], ['#4338CA', '#818CF8']];
+const PLAN_ICONS = [IC.spark, IC.star, IC.zap, IC.gift, IC.crown, IC.trend];
 function planCard(p) {
   const idx = (p.minAmount || 0) % 97 % PLAN_COLORS.length;
   const [c1, c2] = PLAN_COLORS[idx];
   const perks = p.perks && p.perks.length ? p.perks : ['Interest credited every 24 hours', 'Withdraw anytime after maturity', 'Full transaction receipts'];
   const dailyPct = p.durationDays ? (p.cashbackPct / p.durationDays) : 0;
+  const dailyEarn = Math.max(1, Math.round(p.minAmount * dailyPct / 100));
   const div = document.createElement('div');
-  div.className = 'plan-card';
+  div.className = 'plan-card' + (p.popular ? ' is-popular' : '');
   div.innerHTML = `
-    ${p.popular ? '<div class="ribbon">POPULAR</div>' : ''}
+    <span class="pc-orb pc-orb-a" aria-hidden="true"></span><span class="pc-orb pc-orb-b" aria-hidden="true"></span>
+    ${p.popular ? '<div class="ribbon">★ MOST POPULAR</div>' : ''}
+    <span class="pc-live"><i></i>Live · paying daily</span>
     <div class="pc-head">
       <div><div class="pc-name">${esc(p.name)}</div><div class="pc-sub">${esc(p.tagline || 'Savings plan')}</div></div>
       <div class="pc-badge" style="background:linear-gradient(135deg,${c1},${c2})">${PLAN_ICONS[idx]}</div>
     </div>
+    <div class="pc-yield"><b>+${p.cashbackPct}%</b><span>total interest in ${p.durationDays} days</span></div>
+    <div class="pc-daily">${IC.zap}<span>≈ <b>${inr(dailyEarn)}/day</b> on ${inr(p.minAmount)}</span></div>
     <div class="pc-row">
       <div class="pc-cell"><small>Start with</small><b>${inr(p.minAmount)}</b></div>
       <div class="pc-cell"><small>Total Interest</small><b style="color:var(--green)">${p.cashbackPct}%</b></div>
@@ -1096,7 +1328,7 @@ function planCard(p) {
       <div class="pc-cell"><small>Duration</small><b>${p.durationDays}d</b></div>
     </div>
     <div class="pc-perks">${perks.map(k => `<div class="pc-perk">${IC.check}<span>${esc(k)}</span></div>`).join('')}</div>
-    <button class="btn btn-primary btn-block" type="button">Start Saving ${inr(p.minAmount)}</button>`;
+    <button class="btn btn-primary btn-block" type="button">${IC.spark} Start Saving ${inr(p.minAmount)}</button>`;
   div.querySelector('.btn').onclick = () => joinPlan(p.id, p);
   return div;
 }
