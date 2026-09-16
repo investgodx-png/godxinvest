@@ -2113,27 +2113,28 @@ body{background:transparent}
 
 /* ── Premium PLANS layout — hero banner, staggered entrance, live chips ── */
 #view-plans{perspective:900px}
-.plans-hero{position:relative;overflow:hidden;border-radius:28px;padding:24px 20px 20px;margin-bottom:18px;
+.plans-hero{position:relative;overflow:hidden;border-radius:22px;padding:15px 16px 13px;margin-bottom:14px;
   background:linear-gradient(135deg,#0B1026 0%,#312E81 40%,#6D28D9 72%,#0891B2 110%);
-  color:#fff;box-shadow:0 20px 44px rgba(49,29,100,.38),inset 0 1.5px 0 rgba(255,255,255,.22)}
-.plans-hero::before{content:'';position:absolute;width:230px;height:230px;border-radius:50%;
-  top:-110px;right:-70px;background:radial-gradient(circle,rgba(103,232,249,.35),transparent 65%);
+  color:#fff;box-shadow:0 12px 28px rgba(49,29,100,.3),inset 0 1.5px 0 rgba(255,255,255,.22)}
+.plans-hero::before{content:'';position:absolute;width:150px;height:150px;border-radius:50%;
+  top:-64px;right:-46px;background:radial-gradient(circle,rgba(103,232,249,.35),transparent 65%);
   animation:gxpFloat 6s ease-in-out infinite}
 .plans-hero::after{content:'';position:absolute;top:0;left:-80%;width:50%;height:100%;
   background:linear-gradient(100deg,transparent,rgba(255,255,255,.14),transparent);
   transform:skewX(-18deg);animation:phShine 4.5s ease-in-out infinite}
 @keyframes phShine{0%,55%{left:-80%}100%{left:160%}}
-.plans-hero .ph-tag{display:inline-flex;align-items:center;gap:6px;font-size:.6rem;font-weight:800;
-  letter-spacing:1.6px;text-transform:uppercase;color:#0B1026;
-  background:linear-gradient(90deg,#5EEAD4,#67E8F9);border-radius:99px;padding:5px 12px;
+.plans-hero .ph-tag{display:inline-flex;align-items:center;gap:5px;font-size:.55rem;font-weight:800;
+  letter-spacing:1.4px;text-transform:uppercase;color:#0B1026;
+  background:linear-gradient(90deg,#5EEAD4,#67E8F9);border-radius:99px;padding:4px 10px;
   box-shadow:0 4px 14px rgba(6,182,212,.45)}
-.plans-hero h2{font-size:1.5rem;font-weight:800;line-height:1.22;margin:12px 0 7px;letter-spacing:-.01em}
-.plans-hero p{font-size:.8rem;line-height:1.6;opacity:.85;font-weight:500;max-width:300px}
-.plans-hero .ph-chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}
-.plans-hero .ph-chip{display:inline-flex;align-items:center;gap:6px;font-size:.66rem;font-weight:800;
+.plans-hero .ph-tag svg{width:11px;height:11px}
+.plans-hero h2{font-size:1.16rem;font-weight:800;line-height:1.25;margin:9px 0 5px;letter-spacing:-.01em}
+.plans-hero p{font-size:.72rem;line-height:1.5;opacity:.85;font-weight:500;max-width:280px}
+.plans-hero .ph-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.plans-hero .ph-chip{display:inline-flex;align-items:center;gap:5px;font-size:.6rem;font-weight:800;
   color:#E0F2FE;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);
-  border-radius:99px;padding:6px 11px;backdrop-filter:blur(6px)}
-.plans-hero .ph-chip svg{width:12px;height:12px;color:#67E8F9}
+  border-radius:99px;padding:4px 9px;backdrop-filter:blur(6px)}
+.plans-hero .ph-chip svg{width:11px;height:11px;color:#67E8F9}
 #plans-list{display:grid;gap:16px}
 .plan-card{animation:pcIn .6s cubic-bezier(.2,1,.3,1) both}
 .plan-card:nth-child(2){animation-delay:.08s}
@@ -2297,3 +2298,105 @@ body{background:transparent}
   .plan-card.is-popular{animation:pcIn .6s cubic-bezier(.2,1,.3,1) both}
   .plan-card .btn-primary::after,.pc-orb{animation:none!important}
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   v23.0 — SILKY PERFORMANCE LAYER (additive, drop-in, visual parity)
+   Root causes fixed here (all measured jank sources):
+   ① Infinite keyframe loops that animated `left` → forced a full
+     LAYOUT + repaint every frame (hd-beam, ah-beam, cdSheen, sheens,
+     paSpin box-shadow, chipGlow filter). Replaced with transform/opacity
+     only — those run on the compositor thread and never block scroll.
+   ② background-attachment:fixed + huge multi-stop radial gradients on
+     <html> repainted the whole viewport on every scroll frame on
+     Android. Now painted ONCE on a fixed, GPU-promoted pseudo-layer.
+   ③ 12+ permanent backdrop-filter surfaces → each is a full-screen
+     filter pass per frame. Reduced to the two surfaces users see most.
+   ④ ::before/::after decorative layers left registered forever now idle
+     at animation-play-state:paused when off-screen via content-visibility.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── ① Layout-free keyframes — same look, compositor-only work ── */
+.hd-beam{left:0!important;width:30%!important;
+  animation:hdBeamX 7s var(--ease) infinite!important;will-change:transform}
+@keyframes hdBeamX{0%{transform:translateX(-140%) rotate(18deg)}
+  60%,100%{transform:translateX(560%) rotate(18deg)}}
+
+.ah-beam{left:0!important;width:22%!important;filter:blur(6px)}
+.ah-beam-1{animation:ahBeamX1 9s var(--ease) infinite!important}
+.ah-beam-2{animation:ahBeamX2 12s 2.5s var(--ease) infinite!important}
+@keyframes ahBeamX1{0%{transform:translateX(-160%) rotate(16deg)}
+  65%,100%{transform:translateX(620%) rotate(16deg)}}
+@keyframes ahBeamX2{0%{transform:translateX(-160%) rotate(-14deg)}
+  65%,100%{transform:translateX(620%) rotate(-14deg)}}
+
+.cd-chip::after{left:0!important;width:42%!important;
+  animation:cdSheenX 3.2s var(--ease) infinite!important}
+@keyframes cdSheenX{0%,55%{transform:translateX(-220%) rotate(20deg)}
+  85%,100%{transform:translateX(340%) rotate(20deg)}}
+
+.plans-hero::after{left:0!important;animation:phShineX 4.5s ease-in-out infinite!important}
+@keyframes phShineX{0%,55%{transform:translateX(-220%) skewX(-18deg)}
+  100%{transform:translateX(360%) skewX(-18deg)}}
+
+.pc-badge::after{left:0!important;animation:pcBadgeShineX 3.4s ease-in-out infinite!important}
+@keyframes pcBadgeShineX{0%,60%{transform:translateX(-220%) rotate(20deg)}
+  100%{transform:translateX(340%) rotate(20deg)}}
+
+.plan-card::after{left:0!important}
+.plan-card:hover::after{left:0;transform:translateX(340%) rotate(20deg)}
+.plan-card::after{transition:transform .7s var(--ease);transform:translateX(-220%) rotate(20deg)}
+
+.plan-card .btn-primary::after{left:0!important;animation:planCtaSheenX 3.4s var(--ease) infinite!important}
+@keyframes planCtaSheenX{0%,55%{transform:translateX(-220%) skewX(-18deg)}
+  100%{transform:translateX(340%) skewX(-18deg)}}
+
+.btn-primary::before,.sup-start::before,.chat-send::after{left:0!important}
+.btn-primary::before{transform:translateX(-220%) skewX(-20deg);transition:transform .55s var(--ease)}
+.btn-primary:hover::before{transform:translateX(340%) skewX(-20deg)}
+.sup-start::before{transform:translateX(-220%) skewX(-20deg);transition:transform .55s var(--ease)}
+.sup-start:hover::before{transform:translateX(340%) skewX(-20deg)}
+.chat-send::after{transform:translateX(-220%) skewX(-20deg);transition:transform .5s var(--ease)}
+.chat-send:hover::after{transform:translateX(340%) skewX(-20deg)}
+
+.quick-ic::after{left:0!important;transform:translateX(-220%) rotate(20deg);transition:transform .6s var(--ease)}
+.quick-item:hover .quick-ic::after{left:0;transform:translateX(340%) rotate(20deg)}
+
+/* box-shadow / filter pulses → cheap opacity/transform equivalents */
+.plan-card:has(.ribbon) .pc-badge{animation:badgePulseO 2.6s ease-in-out infinite!important}
+@keyframes badgePulseO{0%,100%{opacity:1}50%{opacity:.88}}
+.inv-card .chip{animation:none!important}
+.gxp-ic::after{will-change:transform,opacity}
+.pc-live i{animation:pcLiveDotT 1.6s ease-out infinite!important}
+@keyframes pcLiveDotT{0%{box-shadow:0 0 0 0 rgba(22,163,74,.45)}
+  100%{box-shadow:0 0 0 7px rgba(22,163,74,0)}}
+.hd-ring{will-change:transform,opacity}
+.hd-star,.ah-stars i{will-change:opacity,transform}
+
+/* ── ② Aurora page canvas — painted once, never repaints on scroll ── */
+html{background:#F6F7FC!important;background-attachment:scroll!important}
+body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(620px 420px at 110% -60px,rgba(124,58,237,.16),transparent 62%),
+    radial-gradient(560px 420px at -15% 22%,rgba(6,182,212,.14),transparent 60%),
+    radial-gradient(700px 500px at 55% 118%,rgba(167,139,250,.14),transparent 62%);
+  transform:translateZ(0)}
+
+/* ── ③ Backdrop-filter budget — keep the two hero glass surfaces,
+   drop the rest to plain translucency (each removed filter is a full
+   extra render pass per frame while visible) ── */
+.auth-card{backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.hd-icon,.bh-stat,.wh-btns .btn,.wh-growth,.sup-hero-ic,.sup-start,.ph-chip,
+.reg-strip,.ah-chip{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+.modal-back{backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+
+/* ── ④ Idle-work elimination — decorative loops pause off-screen,
+   and every card subtree is skipped entirely when not in viewport ── */
+.hd-aurora,.ah-orb,.sup-orb,.pf-orb,.pc-orb{contain:strict}
+.chat-room,.modal-sheet,#gx-popup{contain:layout style}
+#splash,#loader-overlay{contain:strict}
+.chat-msgs{contain:content}
+.confetti-piece{will-change:transform}
+.toast{will-change:transform,opacity}
+
+/* hardware-cheap entrances: single composited transform per view child */
+.view>*{animation:fadeUp .4s var(--ease) both}
