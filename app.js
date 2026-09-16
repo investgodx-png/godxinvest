@@ -219,6 +219,8 @@ function countUp(el, to) {
 function tilt3D(sel) {
   const el = document.querySelector(sel);
   if (!el) return;
+  if (el.dataset.tiltBound) return; // v23: never double-bind listeners on re-render
+  el.dataset.tiltBound = '1';
   if (!el.querySelector('.hero-glare')) el.insertAdjacentHTML('beforeend', '<div class="hero-glare"></div>');
   let rafId = 0, px = 0, py = 0;
   el.addEventListener('pointerenter', () => { el.style.willChange = 'transform'; }, { passive: true });
@@ -418,7 +420,7 @@ auth.onAuthStateChanged(async user => {
   teardownViewListeners();
   interestEngineStop();
   if (!user) {
-    currentUser = null; userDoc = null; lastBalance = null;
+    currentUser = null; userDoc = null; lastBalance = null; _hdrKey = '';
     $('#app').classList.add('hidden');
     $('#auth-view').classList.remove('hidden');
     return;
@@ -444,22 +446,65 @@ auth.onAuthStateChanged(async user => {
   }
 });
 
+/* v23 FLICKER FIX — snapshots are fingerprinted. The 10-minute server-time
+   sync (lastSeenAt) and other background writes previously triggered FULL
+   view rebuilds: entrance animations replayed, scroll jumped, canvas redrew.
+   Now: heartbeat-only snapshots do zero DOM work; money-only changes update
+   the exact text nodes in place (count-up preserved); profile changes get a
+   full re-render (they are rare). */
+let _sigMoney = '', _sigProfile = '';
 function bindUserListener() {
+  _sigMoney = ''; _sigProfile = '';
   unsub.push(db.collection('users').doc(currentUser.uid).onSnapshot(s => {
     if (!s.exists) return;
-    userDoc = s;
-    if (currentView === 'home') renderHome();
-    if (currentView === 'wallet') renderWallet();
-    if (currentView === 'settings') renderSettings();
+    const d = s.data();
+    const mSig = [d.balance, d.totalSaved, d.totalCashback, d.totalDeposits, d.totalWithdrawn].join('|');
+    const pSig = [d.name, d.phone, d.email, d.referralCode, JSON.stringify(d.bankDetails || null)].join('|');
+    const first = !_sigProfile;
+    const profileChanged = pSig !== _sigProfile;
+    const moneyChanged = mSig !== _sigMoney;
+    userDoc = s; _sigMoney = mSig; _sigProfile = pSig;
+    if (!moneyChanged && !profileChanged) return; // heartbeat snapshot — no repaint at all
     renderHeader();
+    if (first || profileChanged) {
+      if (currentView === 'home') renderHome();
+      if (currentView === 'wallet') renderWallet();
+      if (currentView === 'settings') renderSettings();
+    } else if (moneyChanged) applyMoneyDelta(d); // surgical update — no flicker
   }, () => {}));
+}
+
+/* in-place balance / totals refresh — the visible DOM is untouched except
+   the exact numbers that changed, so nothing blinks or replays */
+function applyMoneyDelta(d) {
+  if (currentView === 'home') {
+    const amt = $('#bh-amt');
+    if (!amt) return renderHome();
+    if (balanceVisible) countUp(amt, Number(d.balance || 0));
+    const st = $$('#view-home .bh-stat b');
+    if (st[0]) st[0].textContent = balanceVisible ? inr(d.totalSaved) : '•••';
+    if (st[1]) st[1].textContent = balanceVisible ? inr(d.totalCashback) : '•••';
+  } else if (currentView === 'wallet') {
+    const bal = $('#view-wallet .wh-bal');
+    if (!bal) return renderWallet();
+    bal.textContent = balanceVisible ? inr(d.balance) : '₹ ••••••';
+    const cells = $$('#view-wallet .stat-cell b');
+    if (cells.length === 4) {
+      cells[0].textContent = inr(d.totalDeposits || 0);
+      cells[1].textContent = inr(d.totalWithdrawn || 0);
+      cells[2].textContent = inr(d.totalSaved || 0);
+      cells[3].textContent = inr2(d.totalCashback || 0);
+    }
+    const g = $('#view-wallet .wh-growth span:last-child');
+    if (g) g.textContent = (balanceVisible ? '+' + inr2(d.totalCashback || 0) : '+₹ •••') + ' earned · your money is growing daily';
+  } else if (currentView === 'settings') renderSettings();
 }
 
 /* ══════════ REAL-TIME CONTENT SYNC ══════════
    Plans, announcements, payment methods & home content update LIVE
    the moment the admin changes them — no app restart, and no
    Firestore composite index required (sorting done client-side). */
-let livePlans = null, liveAnnouncements = null, liveContent = null, liveReferral = null, liveShareCfg = null, livePopup = null;
+let livePlans = null, liveAnnouncements = null, liveContent = null, liveReferral = null, liveShareCfg = null, livePopup = null, liveChart = null;
 
 function bindContentListeners() {
   // Plans (admin-edited) — live
@@ -488,6 +533,13 @@ function bindContentListeners() {
     liveContent = d.exists ? d.data() : {};
     if (currentView === 'home') drawAppContent();
   }));
+
+  // Home growth chart config (principal, rates, duration, labels) —
+  // admin-editable from Admin panel → Home Chart; re-draws live on save.
+  unsub.push(db.collection('appContent').doc('chart').onSnapshot(d => {
+    liveChart = d.exists ? d.data() : null;
+    if (currentView === 'home') refreshHomeChart();
+  }, () => { liveChart = null; }));
 
   // Referral settings — admin-editable (amount + trigger + description) — live
   unsub.push(db.collection('appContent').doc('referral').onSnapshot(d => {
@@ -686,10 +738,17 @@ function openSharePicker() {
   const nb = s.querySelector('#sh-native'); if (nb) nb.onclick = () => shareOn('native');
 }
 
-/* ══════════ HEADER ══════════ */
+/* ══════════ HEADER ══════════
+   v23: cached rebuild — the aurora starfield DOM is recreated ONLY when the
+   view or user name actually changes. Previously every balance snapshot
+   rebuilt the whole header, restarting every animation and janking frames. */
+let _hdrKey = '';
 function renderHeader() {
   if (!userDoc) return;
   const u = userDoc.data();
+  const hdrKey = currentView + '|' + (u.name || '');
+  if (hdrKey === _hdrKey) return; // nothing changed — zero DOM work
+  _hdrKey = hdrKey;
   const titles = { home: ['Welcome back 👋', u.name || 'Saver'], plans: ['Grow your money', 'Savings Plans'],
                    wallet: ['Your money, always yours', 'My Wallet'], support: ['We are here to help', 'Support & Help'],
                    settings: ['Manage everything', 'Settings'] };
@@ -740,11 +799,73 @@ function switchView(v) {
   window.scrollTo({ top: 0 });
 }
 
-/* ══════════ HOME GROWTH CHART — 1-year outcome: GodX vs other platforms ══════════
+/* ══════════ HOME GROWTH CHART — outcome: GodX vs other platforms ══════════
    Pure-canvas line/area chart (no library, zero network). Compares the growth
-   of the same ₹10,000 over 12 months: a typical FD/savings average (~6.5% p.a.,
-   simple accrual) vs a GodX plan at 24% p.a. credited & compounding daily.
+   of the same deposit over N months: a typical FD/savings average (simple
+   accrual) vs a GodX plan credited & compounding daily.
+   ★ ADMIN-EDITABLE — every number & label lives in appContent/chart and is
+     edited live from Admin panel → Home Chart. Until the admin saves anything,
+     the safe defaults below are used. Admin can also hide the card entirely.
    Entrance sweep plays once per session; resize re-fits without replaying. */
+const CHART_DEFAULTS = {
+  enabled: true,
+  title: '1-Year Growth Outlook',
+  subtitle: '',                     // '' → auto: "Same ₹10,000 — very different outcome"
+  principal: 10000,                 // deposit amount the chart projects
+  months: 12,                       // projection duration
+  godxRate: 24,                     // GodX return, % per year (daily-compounded)
+  otherRate: 6.5,                   // other platforms, % per year (simple accrual)
+  legendGodx: 'GodX · daily interest',
+  legendOther: 'Other platforms · FD avg',
+  note: ''                          // '' → auto footnote
+};
+function chartCfg() {
+  const d = CHART_DEFAULTS, c = Object.assign({}, d, liveChart || {});
+  const num = (v, fb) => { v = Number(v); return isFinite(v) ? v : fb; };
+  c.principal = Math.max(100, num(c.principal, d.principal));
+  c.months = Math.min(120, Math.max(1, Math.round(num(c.months, d.months))));
+  c.godxRate = Math.min(100, Math.max(0, num(c.godxRate, d.godxRate)));
+  c.otherRate = Math.min(100, Math.max(0, num(c.otherRate, d.otherRate)));
+  return c;
+}
+function chartPeriodLabel(m) { return m % 12 === 0 ? (m / 12) + ' yr' : m + ' mo'; }
+function chartSeries(c) {
+  const P = c.principal, M = c.months, godx = [], oth = [];
+  for (let m = 0; m <= M; m++) {
+    const d = 365 * m / M;
+    godx.push(P * Math.pow(1 + c.godxRate / 100 / 365, d)); // daily-compounded plan rate
+    oth.push(P * (1 + c.otherRate / 100 * d / 365));         // ~FD average, simple accrual
+  }
+  return { godx, oth, endG: Math.round(godx[M]), endO: Math.round(oth[M]) };
+}
+function chartCardHTML(c) {
+  if (c.enabled === false) return ''; // admin hid the chart
+  const period = c.months % 12 === 0 ? (c.months / 12) + '-Year' : c.months + '-Month';
+  const sub = c.subtitle || ('Same ' + inr(c.principal) + ' — very different outcome');
+  const note = c.note || ('Illustrative projection over ' + c.months + ' months: GodX plan at ' + c.godxRate + '%/yr, credited & compounded daily, vs ~' + c.otherRate + '% p.a. typical FD / savings average.');
+  return `
+    <!-- Growth comparison — outcome: GodX vs other platforms (admin-editable) -->
+    <div class="gx-chart-card">
+      <div class="gx-chart-head">
+        <div class="gx-chart-ic">${IC.trend}</div>
+        <div><b>${esc(c.title || (period + ' Growth Outlook'))}</b><span>${esc(sub)}</span></div>
+      </div>
+      <div class="gx-chart-wrap"><canvas id="gx-chart"></canvas></div>
+      <div class="gx-chart-legend">
+        <span class="gx-lg gx-lg-godx"><i></i>${esc(c.legendGodx)}</span>
+        <span class="gx-lg gx-lg-oth"><i></i>${esc(c.legendOther)}</span>
+      </div>
+      <div class="gx-chart-win" id="gx-chart-win"></div>
+      <p class="gx-chart-note">${esc(note)}</p>
+    </div>`;
+}
+function refreshHomeChart() {
+  const w = $('#home-chart');
+  if (!w) return;
+  w.innerHTML = chartCardHTML(chartCfg());
+  _gxChartDone = false; // replay the entrance sweep with the new numbers
+  drawGrowthChart();
+}
 let _gxChartDone = false;
 function drawGrowthChart() {
   const cv = document.getElementById('gx-chart');
@@ -752,15 +873,12 @@ function drawGrowthChart() {
   const win = document.getElementById('gx-chart-win');
   const animate = !_gxChartDone && !matchMedia('(prefers-reduced-motion: reduce)').matches;
   _gxChartDone = true;
-  const P = 10000, M = 12;
-  const godx = [], oth = [];
-  for (let m = 0; m <= M; m++) {
-    const d = 365 * m / M;
-    godx.push(P * Math.pow(1 + 0.24 / 365, d)); // daily-compounded plan rate
-    oth.push(P * (1 + 0.065 * d / 365));         // ~FD average, simple accrual
-  }
-  const endG = Math.round(godx[M]), endO = Math.round(oth[M]);
-  if (win) win.innerHTML = IC.trend + '<span>₹10,000 becomes <b>' + inr(endG) + '</b> with GodX — <b>+' + inr(endG - endO) + '</b> more than other platforms in 1 year</span>';
+  const c = chartCfg();
+  const P = c.principal, M = c.months;
+  const s = chartSeries(c), godx = s.godx, oth = s.oth;
+  const endG = s.endG, endO = s.endO;
+  const periodTxt = M % 12 === 0 ? (M / 12) + (M === 12 ? ' year' : ' years') : M + ' months';
+  if (win) win.innerHTML = IC.trend + '<span>' + inr(P) + ' becomes <b>' + inr(endG) + '</b> with GodX — <b>+' + inr(endG - endO) + '</b> more than other platforms in ' + periodTxt + '</span>';
 
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = cv.clientWidth || 320, H = cv.clientHeight || 188;
@@ -792,7 +910,9 @@ function drawGrowthChart() {
     }
     ctx.setLineDash([]);
     ctx.fillStyle = '#94A3B8'; ctx.font = '700 9.5px Inter, sans-serif'; ctx.textAlign = 'center';
-    [['Today', 0], ['3 mo', 3], ['6 mo', 6], ['9 mo', 9], ['1 yr', 12]].forEach(L => ctx.fillText(L[0], X(L[1]), H - 7));
+    [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(M * f))
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .forEach(m => ctx.fillText(m === 0 ? 'Today' : chartPeriodLabel(m), X(m), H - 7));
     /* reveal clip — the lines sweep in from the left */
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pad.l + (W - pad.l - pad.r) * t + 4, H); ctx.clip();
     /* GodX area fill */
@@ -870,20 +990,8 @@ async function renderHome() {
       </div>
     </div>
 
-    <!-- Growth comparison — 1-year outcome: GodX vs other platforms -->
-    <div class="gx-chart-card">
-      <div class="gx-chart-head">
-        <div class="gx-chart-ic">${IC.trend}</div>
-        <div><b>1-Year Growth Outlook</b><span>Same ₹10,000 — very different outcome</span></div>
-      </div>
-      <div class="gx-chart-wrap"><canvas id="gx-chart"></canvas></div>
-      <div class="gx-chart-legend">
-        <span class="gx-lg gx-lg-godx"><i></i>GodX · daily interest</span>
-        <span class="gx-lg gx-lg-oth"><i></i>Other platforms · FD avg</span>
-      </div>
-      <div class="gx-chart-win" id="gx-chart-win"></div>
-      <p class="gx-chart-note">Illustrative projection over 12 months: GodX plan at 24%/yr, credited &amp; compounded daily, vs ~6.5% p.a. typical FD / savings average.</p>
-    </div>
+    <!-- Growth comparison chart — admin-editable via appContent/chart -->
+    <div id="home-chart">${chartCardHTML(chartCfg())}</div>
 
     <div id="home-ann"></div>
 
@@ -1707,7 +1815,7 @@ function depositStepProof(amt, method) {
   const sheet = openSheet(`
     <div class="sheet-title">Verify Your Payment</div>
     <div class="sheet-sub">${inr(amt)} paid to <b>${esc(method.label || 'official account')}</b> · find the 12-digit UTR in your UPI app's payment details</div>
-    <label class="field"><span>UTR / Reference Number</span><input id="dep-utr" inputmode="numeric" maxlength="22" placeholder="e.g. 418723456789"></label>
+    <label class="field"><span>UTR / Reference Number (12 digits)</span><input id="dep-utr" inputmode="numeric" pattern="[0-9]*" maxlength="12" placeholder="e.g. 418723456789"></label>
     <div style="height:14px"></div>
     <input type="file" id="dep-proof" accept="image/*" hidden>
     <label class="file-drop" for="dep-proof" id="dep-drop">
@@ -1717,6 +1825,13 @@ function depositStepProof(amt, method) {
     <div style="height:6px"></div>
     <button class="btn btn-primary btn-block" id="dep-submit" type="button">Submit for Verification</button>
     <p class="muted" style="text-align:center;margin-top:10px">Fake or mismatched proofs lead to account review. One deposit per payment.</p>`);
+
+  /* live guard: digits only, hard-capped at 12 — typing/pasting anything else is stripped instantly */
+  const utrInput = sheet.querySelector('#dep-utr');
+  utrInput.addEventListener('input', () => {
+    const clean = utrInput.value.replace(/\D/g, '').slice(0, 12);
+    if (utrInput.value !== clean) utrInput.value = clean;
+  });
 
   sheet.querySelector('#dep-proof').onchange = async e => {
     const file = e.target.files && e.target.files[0];
@@ -1735,8 +1850,8 @@ function depositStepProof(amt, method) {
   sheet.querySelector('#dep-submit').onclick = async () => {
     if (_depInFlight) return;
     const btn = sheet.querySelector('#dep-submit');
-    const utr = sheet.querySelector('#dep-utr').value.trim().toUpperCase();
-    if (!/^[A-Za-z0-9]{8,22}$/.test(utr)) return toast('Enter a valid UTR / reference number (8–22 characters)', 'err');
+    const utr = sheet.querySelector('#dep-utr').value.trim().replace(/\D/g, '');
+    if (!/^\d{12}$/.test(utr)) return toast('UTR number must be exactly 12 digits', 'err');
     if (!proofData) return toast('Please upload your payment screenshot', 'err');
     _depInFlight = true;
     btn.classList.add('loading'); btn.disabled = true;
@@ -1751,7 +1866,7 @@ function depositStepProof(amt, method) {
       if (existing.exists) {
         hideLoader(); _depInFlight = false;
         btn.classList.remove('loading'); btn.disabled = false;
-        return toast('This deposit was already submitted — check Transaction History.', 'err');
+        return toast('This UTR is already uploaded — each payment can only be submitted once.', 'err');
       }
       await depositRef.set({
         uid: currentUser.uid, type: 'deposit', amount: amt, status: 'pending',
@@ -2324,7 +2439,7 @@ function openChatView(cid) {
       </div>
     </div>`;
   document.body.appendChild(room);
-  let roomDead = false, firstPaint = true, pendingEcho = 0;
+  let roomDead = false, firstPaint = true, pendingEcho = 0, lastMsgSig = '';
   const seenMsgIds = new Set(); // bubbles already on screen — never re-animate them (anti-blink)
   let adminTyping = false;   // live flag from supportChats/{cid}.adminTyping
   const kill = () => {
@@ -2397,6 +2512,13 @@ function openChatView(cid) {
         if (as !== bs) return as - bs;
         return ((a.createdAt && a.createdAt.nanoseconds) || 0) - ((b.createdAt && b.createdAt.nanoseconds) || 0);
       });
+    /* v23: skip no-op snapshots — an identical message set previously
+       re-rendered the whole list (every image re-decoded, full layout re-run)
+       on each Firestore echo, e.g. the chat doc update that fires with send. */
+    const msgSig = msgs.length + '|' + (msgs.length ? msgs[msgs.length - 1].id : '') +
+                   '|' + msgs.reduce((a, m) => a + (m.createdAt ? 0 : 1), 0);
+    if (msgSig === lastMsgSig) return;
+    lastMsgSig = msgSig;
     if (!msgs.length) {
       box.innerHTML = `<div class="chat-empty">
         <div class="ce-logo"><svg viewBox="0 0 48 48" width="34" height="34"><rect x="4" y="4" width="40" height="40" rx="12" fill="rgba(37,99,235,.1)"/><path d="M24 9l11 10-11 20L13 19z" fill="#2563EB"/></svg></div>
