@@ -168,10 +168,21 @@
   document.addEventListener('gesturestart',cancel,{passive:false});
   document.addEventListener('gesturechange',cancel,{passive:false});
   document.addEventListener('gestureend',cancel,{passive:false});
-  /* any two-finger move (Android / Chrome pinch) */
-  document.addEventListener('touchmove',function(e){
-    if(e.touches&&e.touches.length>1)e.preventDefault();
+  /* any two-finger move (Android / Chrome pinch) — v23: the non-passive
+     touchmove blocker is now registered ONLY while two fingers are actually
+     down. A permanent non-passive document touchmove listener forces every
+     scroll through the main thread = the scroll jank users felt. Pinch is
+     killed at the second finger's touchstart instead. */
+  var mvBlock=function(e){e.preventDefault();};
+  document.addEventListener('touchstart',function(e){
+    if(e.touches&&e.touches.length>1){
+      e.preventDefault(); // stop the pinch gesture at initiation
+      document.addEventListener('touchmove',mvBlock,{passive:false});
+    }
   },{passive:false});
+  document.addEventListener('touchend',function(e){
+    if(!e.touches||e.touches.length<2)document.removeEventListener('touchmove',mvBlock);
+  },{passive:true});
   /* double-tap zoom + Ctrl/⌘+wheel zoom */
   document.addEventListener('dblclick',cancel,{passive:false});
   document.addEventListener('wheel',function(e){if(e.ctrlKey)e.preventDefault();},{passive:false});
