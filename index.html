@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
-<meta name="theme-color" content="#0F172A">
+<meta name="theme-color" content="#0B1026">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -155,9 +155,9 @@
 
 <!-- ══ CRITICAL PAINT — splash backdrop renders instantly, before the CSS file arrives ══ -->
 <style>
-  body{background:#0F172A}
+  body{background:#0B1026}
   #splash{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    background:linear-gradient(135deg,#0F172A 0%,#1E3A8A 34%,#1D4ED8 66%,#2563EB 88%,#0D9488 100%)}
+    background:linear-gradient(135deg,#0B1026 0%,#312E81 34%,#6D28D9 66%,#7C3AED 86%,#0891B2 100%)}
 </style>
 
 <!-- ══ NO-ZOOM LOCK — JS gesture blocking for a true Android-app feel ══ -->
@@ -232,6 +232,9 @@
     <div class="ah-orb ah-orb-2"></div>
     <div class="ah-orb ah-orb-3"></div>
     <div class="ah-grid"></div>
+    <div class="ah-stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="ah-beam ah-beam-1" aria-hidden="true"></div>
+    <div class="ah-beam ah-beam-2" aria-hidden="true"></div>
     <div class="auth-logo">
       <div class="auth-logo-ring">
         <svg viewBox="0 0 48 48" width="54" height="54"><defs><linearGradient id="gx-gold-a" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5EEAD4"/><stop offset="1" stop-color="#0D9488"/></linearGradient></defs><rect x="4" y="4" width="40" height="40" rx="12" fill="#fff" opacity=".10"/><path d="M24 9l11 10-11 20L13 19z" fill="#fff"/><path d="M13 19h22M24 9l-5 10 5 20M24 9l5 10-5 20" fill="none" stroke="url(#gx-gold-a)" stroke-width="1.7" stroke-linejoin="round" opacity=".95"/></svg>
@@ -243,6 +246,12 @@
       <span class="ah-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>Bank-grade Security</span>
       <span class="ah-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>24h Withdrawals</span>
       <span class="ah-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>100% Transparent</span>
+    </div>
+    <div class="ah-marquee" aria-hidden="true">
+      <div class="ah-marquee-track">
+        <span>RBI Registered</span><span>Daily Interest Earnings</span><span>24h Withdrawals</span><span>256-bit Encryption</span><span>Made in India</span><span>100% Transparent</span>
+        <span>RBI Registered</span><span>Daily Interest Earnings</span><span>24h Withdrawals</span><span>256-bit Encryption</span><span>Made in India</span><span>100% Transparent</span>
+      </div>
     </div>
   </div>
 
@@ -377,6 +386,24 @@
   </div>
   <div class="lo-ring"></div>
   <div class="lo-txt" style="font-weight:700;color:var(--ink);font-size:.9rem">Working…</div>
+</div>
+
+<!-- ══════════ ADMIN POPUP — welcome message & promo overlay (managed from
+     the Admin panel → Popup Message; appears for every user on app open,
+     updates live, admin can hide/edit it anytime) ══════════ -->
+<div id="gx-popup" hidden>
+  <div class="gxp-back" id="gxp-back"></div>
+  <div class="gxp-card" role="dialog" aria-modal="true" aria-labelledby="gxp-title">
+    <div class="gxp-glow gxp-glow-1" aria-hidden="true"></div>
+    <div class="gxp-glow gxp-glow-2" aria-hidden="true"></div>
+    <button class="gxp-x" id="gxp-close" type="button" aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="gxp-ic" id="gxp-ic"></div>
+    <h3 class="gxp-title" id="gxp-title"></h3>
+    <p class="gxp-body" id="gxp-body"></p>
+    <div class="gxp-btns" id="gxp-btns"></div>
+  </div>
 </div>
 
 <!-- modal + toast roots -->
