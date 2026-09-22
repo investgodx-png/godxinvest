@@ -1400,6 +1400,53 @@ body{overflow-x:clip}
 .field input{font-size:1rem}
 @media(max-width:360px){.auth-tab{font-size:.9rem;gap:5px}.auth-tab svg{width:14px;height:14px}}
 
+/* ═══════════ v28 — Plan banners + premium login ═══════════ */
+
+/* banner image at the top of a plan card (admin sets it per-plan) */
+.plan-card.has-banner{padding-top:0;overflow:hidden}
+.pc-banner{margin:0 -20px 16px;position:relative;overflow:hidden;border-radius:26px 26px 18px 18px}
+.pc-banner img{display:block;width:100%;height:158px;object-fit:cover;
+  animation:pcBannerIn .6s var(--ease)}
+.pc-banner::after{content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(11,16,38,0) 55%,rgba(11,16,38,.28) 100%);
+  pointer-events:none}
+@keyframes pcBannerIn{from{opacity:0;transform:scale(1.04)}to{opacity:1;transform:none}}
+
+/* full-width banner above the plan list (Plans tab) */
+.plans-banner-img{display:block;width:100%;border-radius:22px;margin:0 0 6px;
+  box-shadow:0 16px 38px rgba(11,16,38,.22);border:1px solid rgba(255,255,255,.5);
+  animation:fadeUp .45s var(--ease)}
+
+/* ── LOGIN / SIGN-UP — enhanced premium treatment ── */
+.auth-hero{background:
+  radial-gradient(ellipse 90% 60% at 85% -10%,rgba(94,234,212,.22),transparent 60%),
+  radial-gradient(ellipse 80% 55% at 8% 108%,rgba(124,58,237,.30),transparent 62%),
+  linear-gradient(160deg,#0F172A 0%,#1E3A8A 34%,#1D4ED8 62%,#2563EB 88%,#3B82F6 100%)}
+.auth-card{box-shadow:0 -18px 54px rgba(15,23,42,.30);
+  background:linear-gradient(180deg,#FFFFFF 0%,#FAFBFF 100%)}
+.auth-card::before{background:linear-gradient(90deg,#CBD5E1,#93C5FD,#CBD5E1);width:52px;height:5.5px}
+.auth-tabs{background:linear-gradient(135deg,#EEF2FF,#F0F9FF);
+  box-shadow:inset 0 1.5px 5px rgba(15,23,42,.07)}
+.auth-tab-slider{background:linear-gradient(180deg,#FFFFFF,#F5F8FF);
+  box-shadow:0 6px 18px rgba(37,99,235,.22),0 0 0 1.5px rgba(37,99,235,.22)}
+.auth-tab.active{color:var(--p1);text-shadow:0 1px 8px rgba(37,99,235,.25)}
+.field input{background:linear-gradient(180deg,#F8FAFC,#FDFEFF);
+  box-shadow:inset 0 1.5px 4px rgba(15,23,42,.05)}
+.field input:focus{border-color:var(--p1);background:#fff;
+  box-shadow:0 0 0 4px rgba(37,99,235,.16),0 6px 18px rgba(37,99,235,.14);
+  transform:translateY(-1px)}
+.btn-hero{background:linear-gradient(135deg,#1E3A8A,#1D4ED8 30%,#2563EB 60%,#0D9488 130%);
+  background-size:160% 160%;box-shadow:0 16px 36px rgba(37,99,235,.48),inset 0 1.5px 0 rgba(255,255,255,.36);
+  transition:box-shadow .25s var(--ease),transform .15s var(--ease),background-position .5s var(--ease)}
+.btn-hero:hover{background-position:90% 90%;
+  box-shadow:0 20px 44px rgba(37,99,235,.58),inset 0 1.5px 0 rgba(255,255,255,.36);transform:translateY(-1.5px)}
+.btn-hero:active{transform:scale(.97)}
+.auth-logo-ring{border-color:rgba(94,234,212,.55);
+  background:linear-gradient(150deg,rgba(255,255,255,.16),rgba(255,255,255,.05))}
+.auth-link{transition:opacity .15s}
+.auth-link:active{opacity:.7}
+.auth-how{box-shadow:0 4px 14px rgba(37,99,235,.16)}
+
 /* ═══════════════════════════════════════════════════════════════════
    v17.0 — ULTIMATE DEEP PREMIUM OVERHAUL (additive override layer)
    Mesh-gradient heroes · jewel icon system · floating-dock nav ·
@@ -2400,3 +2447,177 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 
 /* hardware-cheap entrances: single composited transform per view child */
 .view>*{animation:fadeUp .4s var(--ease) both}
+
+/* ═══ v8.1 — Daily Login Bonus + Register Bonus ═══ */
+.lb-hero{text-align:center;padding:4px 0 2px}
+.lb-gift{width:64px;height:64px;margin:0 auto 10px;border-radius:20px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#F59E0B,#FBBF24);color:#fff;box-shadow:0 10px 24px rgba(245,158,11,.35)}
+.lb-gift svg{width:32px;height:32px}
+.lb-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.lb-day{background:#F8FAFC;border:1.5px solid #E2E8F0;border-radius:14px;padding:10px 6px;text-align:center;display:flex;flex-direction:column;gap:2px}
+.lb-day small{font-size:.62rem;font-weight:700;color:#94A3B8;text-transform:uppercase}
+.lb-day b{font-size:.82rem;color:#0F172A}
+.lb-day span{font-size:.8rem}
+.lb-day.done{background:#ECFDF5;border-color:#A7F3D0}
+.lb-day.done b{color:#059669}
+.lb-day.today{background:linear-gradient(135deg,#7C3AED,#06B6D4);border-color:transparent;box-shadow:0 6px 16px rgba(124,58,237,.3)}
+.lb-day.today small,.lb-day.today b{color:#fff}
+.lb-total{margin-top:12px;text-align:center;font-size:.78rem;font-weight:600;color:#64748B}
+.lb-total b{color:#059669}
+.lb-card{cursor:pointer;padding:14px 16px;transition:transform .15s}
+.lb-card:active{transform:scale(.98)}
+.lb-card-l{display:flex;align-items:center;gap:12px}
+.lb-card-ic{width:44px;height:44px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#F59E0B,#FBBF24);color:#fff}
+.lb-card-ic svg{width:22px;height:22px}
+.lb-card-l b{font-size:.88rem}
+.lb-card-l p{font-size:.72rem;color:#64748B;margin:2px 0 6px}
+.lb-dots{display:flex;gap:4px}
+.lb-dots i{width:14px;height:6px;border-radius:99px;background:#E2E8F0}
+.lb-dots i.on{background:#10B981}
+.lb-dots i.now{background:linear-gradient(90deg,#7C3AED,#06B6D4)}
+.lb-card-r{text-align:right;flex-shrink:0}
+.lb-card-r small{display:block;font-size:.6rem;color:#94A3B8;font-weight:700;text-transform:uppercase}
+.lb-card-r b{font-size:.95rem;color:#059669}
+.lb-card-r svg{width:16px;height:16px;color:#CBD5E1;vertical-align:middle;margin-left:4px}
+
+
+/* ═══════════ v30 — compact auth hero · glitch-proof auth buttons ·
+   premium daily-bonus card · personalised Refer & Earn card ═══════════ */
+
+/* ① SMALLER LOGO / HERO — the login card gets much more room */
+.auth-hero{padding:calc(14px + env(safe-area-inset-top)) 20px 56px}
+.auth-logo svg{width:44px;height:44px}
+.auth-logo-ring{width:46px;height:46px;border-radius:14px}
+.auth-logo-ring svg{width:26px;height:26px}
+.auth-hero h1{font-size:1.6rem;margin-top:6px}
+.auth-hero p{font-size:.76rem;margin-top:2px}
+.ah-trust{gap:6px;margin-top:8px}
+.ah-chip{padding:3.5px 9px;font-size:.55rem}
+.ah-marquee{display:none}                 /* strip removed — big height win */
+.auth-card{margin-top:-28px;border-radius:26px 26px 0 0}
+.auth-card::before{margin:-4px auto 10px}
+.auth-form{gap:10px}
+
+/* ② TIGHTER GAP between "Create free account" and "How GodX works" */
+.auth-alt{margin-top:0}
+.auth-how{margin-top:4px;padding:7px 14px}
+.auth-secure{padding:6px 16px calc(10px + env(safe-area-inset-bottom))}
+
+/* ③ BUGFIX — login / signup submit button can no longer glitch-stretch
+   into a giant button while the request runs: the height is locked, the
+   content can never push it taller, and the spinner is centered inside. */
+.auth-form .btn-hero,.auth-scroll .btn-hero{
+  height:50px;min-height:50px;max-height:50px;flex-shrink:0;overflow:hidden}
+.btn.loading{line-height:0}
+.btn.loading::after{width:20px;height:20px;left:50%;top:50%;
+  margin:-10px 0 0 -10px;right:auto;bottom:auto}
+.btn.loading svg{opacity:0;position:absolute}
+
+/* ④ DAILY BONUS — gold shimmer card, glowing gift, animated day tiles */
+.lb-card{position:relative;overflow:hidden;border:1.5px solid #FDE68A;
+  background:linear-gradient(120deg,#FFFBEB 0%,#FEF3C7 46%,#FFFBEB 100%);
+  box-shadow:0 10px 26px rgba(245,158,11,.18)}
+.lb-card::after{content:'';position:absolute;top:0;left:-60%;width:45%;height:100%;
+  background:linear-gradient(105deg,transparent,rgba(255,255,255,.8),transparent);
+  animation:lbShine 3.4s ease-in-out infinite;pointer-events:none}
+@keyframes lbShine{0%,55%{left:-60%}100%{left:135%}}
+.lb-card-ic{background:linear-gradient(135deg,#F59E0B,#FBBF24 60%,#FDE68A);
+  box-shadow:0 8px 18px rgba(245,158,11,.45);animation:lbGiftWiggle 2.8s ease-in-out infinite}
+@keyframes lbGiftWiggle{0%,100%{transform:rotate(-4deg) scale(1)}50%{transform:rotate(4deg) scale(1.07)}}
+.lb-card-l b{color:#92400E}
+.lb-card-l p{color:#B45309}
+.lb-dots i{width:16px;height:7px}
+.lb-dots i.on{background:linear-gradient(90deg,#10B981,#34D399)}
+.lb-dots i.now{background:linear-gradient(90deg,#F59E0B,#FBBF24);
+  box-shadow:0 0 8px rgba(245,158,11,.65)}
+.lb-card-r small{color:#B45309}
+.lb-card-r b{color:#D97706}
+.lb-card-r svg{color:#F59E0B}
+
+/* bonus sheet (calendar popup) — matching premium gold theme */
+.lb-gift{background:linear-gradient(135deg,#F59E0B,#FBBF24 55%,#FDE68A);
+  animation:lbGiftGlow 2.4s ease-in-out infinite}
+@keyframes lbGiftGlow{
+  0%,100%{box-shadow:0 12px 28px rgba(245,158,11,.5),0 0 0 0 rgba(245,158,11,.35)}
+  50%{box-shadow:0 12px 28px rgba(245,158,11,.5),0 0 0 14px rgba(245,158,11,0)}}
+.lb-day{transition:transform .15s}
+.lb-day.today{background:linear-gradient(135deg,#F59E0B,#F97316);
+  box-shadow:0 8px 18px rgba(249,115,22,.42);animation:lbTodayPulse 1.9s ease-in-out infinite}
+@keyframes lbTodayPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+#lb-claim{background:linear-gradient(135deg,#F59E0B,#F97316 60%,#FBBF24);
+  box-shadow:0 12px 28px rgba(249,115,22,.45)}
+
+/* ⑤ PERSONALISED REFER & EARN CARD (below the daily bonus card) */
+.rf-card{margin-top:12px;position:relative;overflow:hidden;border:none;color:#fff;
+  background:linear-gradient(135deg,#312E81 0%,#6D28D9 55%,#7C3AED 100%);
+  box-shadow:0 12px 30px rgba(109,40,217,.35);cursor:pointer;
+  transition:transform .15s}
+.rf-card:active{transform:scale(.98)}
+.rf-card::before{content:'';position:absolute;top:-60px;right:-50px;width:170px;height:170px;
+  border-radius:50%;background:radial-gradient(circle,rgba(94,234,212,.28),transparent 70%);
+  pointer-events:none}
+.rf-head{display:flex;align-items:center;gap:12px;position:relative;z-index:1}
+.rf-ic{width:44px;height:44px;border-radius:14px;flex-shrink:0;display:flex;
+  align-items:center;justify-content:center;background:rgba(255,255,255,.16);
+  border:1px solid rgba(255,255,255,.22);box-shadow:0 8px 18px rgba(0,0,0,.22)}
+.rf-ic svg{width:23px;height:23px;color:#fff}
+.rf-head-t{flex:1;min-width:0}
+.rf-head-t>b{font-size:.92rem;font-weight:800;font-family:var(--font-d);letter-spacing:.2px}
+.rf-head-t p{font-size:.68rem;opacity:.88;margin-top:2px;line-height:1.45;font-weight:600}
+.rf-head-t p b{color:#FDE68A;font-weight:800}
+.rf-code{padding:7px 11px;border-radius:11px;background:rgba(255,255,255,.14);
+  border:1.5px dashed rgba(255,255,255,.5);font-size:.72rem;font-weight:800;
+  letter-spacing:1.2px;color:#fff;flex-shrink:0;transition:transform .12s}
+.rf-code:active{transform:scale(.92)}
+.rf-stats{display:flex;align-items:center;gap:10px;margin-top:12px;position:relative;z-index:1;
+  background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);
+  border-radius:14px;padding:10px 12px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.rf-stat{display:flex;align-items:center;gap:8px;min-width:0}
+.rf-stat-ic{width:30px;height:30px;border-radius:10px;flex-shrink:0;display:flex;
+  align-items:center;justify-content:center}
+.rf-ic-users{background:rgba(94,234,212,.22)}
+.rf-ic-users svg{width:16px;height:16px;color:#5EEAD4}
+.rf-ic-coins{background:rgba(251,191,36,.22)}
+.rf-ic-coins svg{width:16px;height:16px;color:#FBBF24}
+.rf-stat-t{display:flex;flex-direction:column;line-height:1.15}
+.rf-stat-t b{font-size:.92rem;font-weight:800;font-family:var(--font-d)}
+.rf-stat-t small{font-size:.54rem;opacity:.78;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.rf-div{width:1.5px;height:26px;background:rgba(255,255,255,.22);flex-shrink:0;border-radius:99px}
+.rf-share{margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:#fff;
+  color:#6D28D9;font-weight:800;font-size:.74rem;padding:8px 13px;border-radius:11px;
+  flex-shrink:0;box-shadow:0 6px 14px rgba(0,0,0,.22);transition:transform .12s}
+.rf-share:active{transform:scale(.93)}
+.rf-share svg{width:14px;height:14px}
+@media(prefers-reduced-motion:reduce){
+  .lb-card::after,.lb-card-ic,.lb-gift,.lb-day.today{animation:none!important}}
+
+/* ══════════ v31 — TEAM COMMISSIONS (2-level referral) ══════════ */
+.tm-tiers{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.tm-tier{position:relative;overflow:hidden;border-radius:16px;padding:12px 13px;border:1.5px solid;display:flex;flex-direction:column;gap:1px}
+.tm-tier small{font-size:.56rem;font-weight:800;text-transform:uppercase;letter-spacing:.7px;opacity:.75}
+.tm-tier b{font-size:1.32rem;font-weight:800;font-family:var(--font-d);line-height:1.1}
+.tm-tier span{font-size:.62rem;font-weight:600;opacity:.78}
+.tm-t1{background:linear-gradient(135deg,#F0FDFA,#CCFBF1);border-color:#5EEAD4;color:#0F766E}
+.tm-t2{background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border-color:#93C5FD;color:#1D4ED8}
+.tm-total{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--grad-btn);color:#fff;border-radius:16px;padding:13px 15px;margin:4px 0 12px;box-shadow:0 8px 22px rgba(37,99,235,.25)}
+.tm-total small{font-size:.56rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;opacity:.85;flex:1;min-width:120px}
+.tm-total b{font-size:1.28rem;font-weight:800;font-family:var(--font-d)}
+.tm-total span{font-size:.62rem;font-weight:700;opacity:.85;width:100%}
+.tm-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.tm-col{background:var(--bg);border:1.5px solid var(--border,#E2E8F0);border-radius:16px;padding:11px;min-width:0}
+.tm-col-h{display:flex;align-items:center;gap:7px;font-size:.74rem;font-weight:800;color:var(--ink);margin-bottom:8px}
+.tm-col-h svg{width:16px;height:16px;flex-shrink:0}
+.tm-col-h span{font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);display:block;width:100%}
+.tm-h1 svg{color:#0D9488}
+.tm-h2 svg{color:#2563EB}
+.tm-rows{display:flex;flex-direction:column;gap:7px}
+.tm-row{display:flex;align-items:center;gap:8px;background:var(--card,#fff);border:1px solid var(--border,#E2E8F0);border-radius:12px;padding:7px 9px}
+.tm-av{width:28px;height:28px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;color:#fff;background:linear-gradient(135deg,#2563EB,#06B6D4)}
+.tm-mid{flex:1;min-width:0}
+.tm-mid b{display:block;font-size:.72rem;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tm-mid small{font-size:.58rem;color:var(--muted);font-weight:600}
+.tm-earn{font-size:.7rem;font-weight:800;color:var(--muted);white-space:nowrap}
+.tm-earn.on{color:var(--green)}
+.tm-empty{padding:16px 8px;text-align:center;color:var(--muted)}
+.tm-empty svg{width:22px;height:22px;opacity:.5;margin-bottom:4px}
+.tm-empty p{font-size:.64rem;font-weight:600;line-height:1.5}
+@media(max-width:380px){.tm-cols{grid-template-columns:1fr}}
