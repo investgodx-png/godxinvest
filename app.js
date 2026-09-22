@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   GODX — user app logic 7.0 (daily-interest edition)
+   GODX — user app logic 7.1 (v31 2-level team-commission referral engine) (daily-interest edition)
    Collections: users, plans, investments, transactions,
                 announcements, appContent, paymentMethods,
                 supportChats(→messages)
@@ -156,9 +156,14 @@ async function syncServerTime(force) {
   try {
     const ref = db.collection('users').doc(currentUser.uid);
     const t0 = Date.now();
-    await ref.set({ lastSeenAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    // FIX (v27b): use update() instead of set-merge. A set-merge would try to
+    // create the doc if it were momentarily unreadable, which the create-rule
+    // would deny — the app then treated that denial as a global auth failure
+    // and signed the user out ("random logout" bug). update() cleanly no-ops
+    // when the doc is missing / unreadable and never triggers a signOut.
+    await ref.update({ lastSeenAt: firebase.firestore.FieldValue.serverTimestamp() });
     const snap = await ref.get({ source: 'server' });
-    const sv = snap.data().lastSeenAt;
+    const sv = snap.exists && snap.data().lastSeenAt;
     if (sv && sv.toMillis) {
       const rtt = (Date.now() - t0) / 2;
       serverOffsetMs = sv.toMillis() - (t0 + rtt);
@@ -351,27 +356,79 @@ $('#form-signup').onsubmit = async e => {
   if (!/^\S+@\S+\.\S+$/.test(email)) return toast('Please enter a valid email address', 'err');
   if (pass.length < 6) return toast('Password must be at least 6 characters', 'err');
   btn.classList.add('loading'); btn.disabled = true;
+  let cred = null;
   try {
-    const cred = await auth.createUserWithEmailAndPassword(email, pass);
+    cred = await auth.createUserWithEmailAndPassword(email, pass);
     const code = 'GODX' + Math.random().toString(36).slice(2, 7).toUpperCase();
-    await db.collection('users').doc(cred.user.uid).set({
-      name, phone, email, role: 'user', balance: 0,
-      totalSaved: 0, totalCashback: 0, totalDeposits: 0, totalWithdrawn: 0,
-      referralCode: code, referredBy: ref || null, bankDetails: null,
+    const uRef = db.collection('users').doc(cred.user.uid);
+    // FIX (v27b): EVERY financial counter is written explicitly as 0 and
+    // registerBonusGiven / loginStreak / lastLoginClaim are seeded so the
+    // strict create-rule ('== 0' comparisons) never trips on undefined fields
+    // and later bonus writes read a real prior value.
+    await uRef.set({
+      name, phone, email, role: 'user',
+      balance: 0, totalSaved: 0, totalCashback: 0,
+      totalDeposits: 0, totalWithdrawn: 0,
+      referralCode: code, referredBy: ref || store.get('gxRef', '').trim().toUpperCase() || null,
+      bankDetails: null,
+      registerBonusGiven: false, loginStreak: 0, lastLoginClaim: '', refCodeTopUp: 0,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    /* 🎁 REGISTER BONUS — admin-controlled (appContent/registerBonus). Credited
+       ONCE, right after the profile exists, guarded by the registerBonusGiven flag
+       inside a Firestore transaction — retries / double-taps can never pay twice.
+       If this fails (slow rules propagation, offline), retryRegisterBonusIfNeeded()
+       running under bindContentListeners() will heal it on the very next login. */
+    try {
+      // Wait until the just-written profile is visible to the SERVER — fixes
+      // the race where the bonus tx used to fire before the profile existed.
+      for (let i = 0; i < 6; i++) {
+        try {
+          const s = await uRef.get({ source: 'server' });
+          if (s.exists) break;
+        } catch (_) {}
+        await new Promise(r => setTimeout(r, 350));
+      }
+      const rbDoc = await db.collection('appContent').doc('registerBonus').get();
+      const rb = rbDoc.exists ? rbDoc.data() : {};
+      const rbAmt = Number(rb.amount || 0);
+      if (rb.enabled === true && rbAmt > 0) {
+        const rbNote = (rb.note || '').trim() || 'Registration bonus — welcome to GodX! 🎉';
+        await db.runTransaction(async tx => {
+          const s = await tx.get(uRef);
+          if (!s.exists) throw 'no-profile';
+          if (s.data().registerBonusGiven === true) return;
+          // ORDER: create the receipt first (its own rule validates it),
+          // then update the user (users-rule enforces lockstep + cap).
+          const txRef = db.collection('transactions').doc();
+          tx.set(txRef, {
+            uid: cred.user.uid, type: 'bonus', amount: rbAmt, status: 'completed',
+            note: rbNote, userName: name,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+          tx.update(uRef, {
+            balance: firebase.firestore.FieldValue.increment(rbAmt),
+            totalCashback: firebase.firestore.FieldValue.increment(rbAmt),
+            registerBonusGiven: true });
+        });
+        toast('🎁 Registration bonus ' + inr(rbAmt) + ' credited to your wallet!', 'ok');
+      }
+    } catch (e) {
+      console.warn('Register-bonus deferred:', e);
+      /* not fatal — retryRegisterBonusIfNeeded() heals it on next login */
+    }
     toast('Account created — welcome to GodX! 🎉', 'ok');
     confetti();
   } catch (err) {
-    // FIX: orphan-account recovery — if the auth user was created but the
-    // profile write failed (rules / offline), sign out so the email is not
-    // stuck in "already registered" limbo with no way to log in.
-    if (err && (err.code === 'permission-denied' || err.code === 'unavailable')) {
+    // FIX (v27b): orphan-account cleanup. If the auth user was created but the
+    // profile write failed, delete the auth user so the email is not stuck in
+    // "already registered" limbo. Only skip cleanup for email-in-use errors
+    // (those never created a new auth user in the first place).
+    if (cred && cred.user && err && err.code !== 'auth/email-already-in-use') {
+      try { await cred.user.delete(); } catch (_) {}
       try { await auth.signOut(); } catch (_) {}
-      toast('Could not finish setup — please try again', 'err');
-    } else toast(authMsg(err), 'err');
+    }
+    toast(authMsg(err), 'err');
   }
-  // FIX: restore button state inside finally (same stuck-spinner bug as login)
   finally { btn.classList.remove('loading'); btn.disabled = false; }
 };
 
@@ -426,23 +483,38 @@ auth.onAuthStateChanged(async user => {
     return;
   }
   try {
-    const snap = await db.collection('users').doc(user.uid).get();
-    if (!snap.exists) { await auth.signOut(); return toast('Profile not found. Contact support.', 'err'); }
+    // FIX (v27b): transient network / rules-propagation glitches used to sign
+    // the user out ("Profile not found") on cold-start. Retry once, from server.
+    let snap = await db.collection('users').doc(user.uid).get();
+    if (!snap.exists) {
+      await new Promise(r => setTimeout(r, 700));
+      try { snap = await db.collection('users').doc(user.uid).get({ source: 'server' }); } catch (_) {}
+    }
+    if (!snap || !snap.exists) {
+      await auth.signOut();
+      return toast('Profile not found. Contact support.', 'err');
+    }
     currentUser = user; userDoc = snap;
     $('#auth-view').classList.add('hidden');
     $('#app').classList.remove('hidden');
     bindUserListener();
     bindContentListeners(); // 🔴 real-time admin → user sync
+    loginBonusCheck();      // 🗓️ daily login bonus (admin-configured, e.g. 7-day cycle)
     syncServerTime(true).then(() => interestEngineStart()); // daily interest, server-anchored
     renderHeader();
     switchView('home');
   } catch (e) {
     console.error('Profile load failed:', e);
-    $('#app').classList.add('hidden');
-    $('#auth-view').classList.remove('hidden');
-    toast(e && e.code === 'permission-denied'
-      ? 'Database access denied — publish firestore.rules in Firebase Console'
-      : 'Could not load profile — check connection', 'err');
+    // FIX (v27b): DO NOT nuke the session on a transient error — that felt
+    // like a random logout. Only hard-fail on a real permission-denied.
+    if (e && e.code === 'permission-denied') {
+      $('#app').classList.add('hidden');
+      $('#auth-view').classList.remove('hidden');
+      toast('Database access denied — publish firestore.rules in Firebase Console', 'err');
+    } else {
+      toast('Reconnecting…', '');
+      setTimeout(() => { try { auth.currentUser && auth.updateCurrentUser(auth.currentUser); } catch (_) {} }, 2000);
+    }
   }
 });
 
@@ -459,7 +531,7 @@ function bindUserListener() {
     if (!s.exists) return;
     const d = s.data();
     const mSig = [d.balance, d.totalSaved, d.totalCashback, d.totalDeposits, d.totalWithdrawn].join('|');
-    const pSig = [d.name, d.phone, d.email, d.referralCode, JSON.stringify(d.bankDetails || null)].join('|');
+    const pSig = [d.name, d.phone, d.email, d.referralCode, JSON.stringify(d.bankDetails || null), d.lastLoginClaim || '', d.loginStreak || 0].join('|');
     const first = !_sigProfile;
     const profileChanged = pSig !== _sigProfile;
     const moneyChanged = mSig !== _sigMoney;
@@ -504,7 +576,7 @@ function applyMoneyDelta(d) {
    Plans, announcements, payment methods & home content update LIVE
    the moment the admin changes them — no app restart, and no
    Firestore composite index required (sorting done client-side). */
-let livePlans = null, liveAnnouncements = null, liveContent = null, liveReferral = null, liveShareCfg = null, livePopup = null, liveChart = null;
+let livePlans = null, liveAnnouncements = null, liveContent = null, liveReferral = null, liveShareCfg = null, livePopup = null, liveChart = null, liveBonuses = null, livePlanBanner = null;
 
 function bindContentListeners() {
   // Plans (admin-edited) — live
@@ -541,6 +613,13 @@ function bindContentListeners() {
     if (currentView === 'home') refreshHomeChart();
   }, () => { liveChart = null; }));
 
+  // Plans-page banner — one full-width image above the plan list,
+  // admin-controlled from Admin panel → Plans → Plans Page Banner. Live.
+  unsub.push(db.collection('planBanners').doc('plans').onSnapshot(d => {
+    livePlanBanner = (d.exists && d.data().enabled && d.data().image) ? d.data().image : null;
+    if (currentView === 'plans') drawPlansBanner();
+  }, () => { livePlanBanner = null; }));
+
   // Referral settings — admin-editable (amount + trigger + description) — live
   unsub.push(db.collection('appContent').doc('referral').onSnapshot(d => {
     liveReferral = d.exists ? d.data() : {};
@@ -558,6 +637,52 @@ function bindContentListeners() {
     livePopup = d.exists ? d.data() : null;
     maybeShowWelcomePopup();
   }, () => { livePopup = null; }));
+
+  // Bonus configs (register bonus + daily login bonus) — admin-editable — live.
+  // Any change re-evaluates the login-bonus popup and refreshes the Home card.
+  liveBonuses = {};
+  const onBonusCfg = d => {
+    liveBonuses[d.id] = d.exists ? d.data() : {};
+    if (currentView === 'home') drawLoginCard();
+    loginBonusCheck();
+    // FIX (v27b): every time the register-bonus config lands or refreshes,
+    // heal any account whose signup-time bonus write failed (rules glitch,
+    // offline, half-created profile). Idempotent via registerBonusGiven.
+    if (d.id === 'registerBonus') retryRegisterBonusIfNeeded();
+  };
+  unsub.push(db.collection('appContent').doc('registerBonus').onSnapshot(onBonusCfg, () => {}));
+  unsub.push(db.collection('appContent').doc('loginBonus').onSnapshot(onBonusCfg, () => {}));
+}
+
+/* Retries the register bonus for accounts whose original signup-time bonus
+   write failed (offline, transient rules denial, etc.). Idempotent — the
+   registerBonusGiven flag inside the transaction prevents double credit. */
+async function retryRegisterBonusIfNeeded() {
+  try {
+    if (!currentUser || !userDoc) return;
+    const u = userDoc.data();
+    if (u.registerBonusGiven === true) return;
+    const rb = (liveBonuses && liveBonuses.registerBonus) || {};
+    const amt = Number(rb.amount || 0);
+    if (rb.enabled !== true || !(amt > 0)) return;
+    const uRef = db.collection('users').doc(currentUser.uid);
+    await db.runTransaction(async tx => {
+      const s = await tx.get(uRef);
+      if (!s.exists || s.data().registerBonusGiven === true) return;
+      const txRef = db.collection('transactions').doc();
+      tx.set(txRef, {
+        uid: currentUser.uid, type: 'bonus', amount: amt, status: 'completed',
+        note: (rb.note || 'Registration bonus — welcome to GodX! 🎉'),
+        userName: u.name || '',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      tx.update(uRef, {
+        balance: firebase.firestore.FieldValue.increment(amt),
+        totalCashback: firebase.firestore.FieldValue.increment(amt),
+        registerBonusGiven: true });
+    });
+    confetti(24);
+    toast('🎁 Registration bonus ' + inr(amt) + ' credited!', 'ok');
+  } catch (e) { /* silent — will retry on the next config snapshot */ }
 }
 
 /* ══════════ ADMIN WELCOME POPUP ══════════
@@ -641,12 +766,14 @@ function showWelcomePopup(p, ver) {
 function refCfg() {
   const r = liveReferral || {};
   return {
-    referrerAmount: Number(r.referrerAmount ?? 25),
-    referredAmount: Number(r.referredAmount ?? 25),
-    trigger: r.trigger || 'deposit', // 'deposit' | 'first_plan'
+    /* v31: 2-level team commissions — a % of EVERY approved deposit.
+       Team 1 = your direct friends (level1Pct% of their deposits),
+       Team 2 = friends of your friends (level2Pct% of their deposits). */
+    level1Pct: Math.min(50, Math.max(0, Number(r.level1Pct ?? 10))),
+    level2Pct: Math.min(50, Math.max(0, Number(r.level2Pct ?? 5))),
     minDeposit: Number(r.minDeposit ?? 0),
     title: r.title || 'Refer & Earn',
-    description: r.description || 'Share your code — you both get a reward when a friend joins!',
+    description: r.description || 'Invite friends — earn a % of every deposit your team makes!',
     enabled: r.enabled !== false
   };
 }
@@ -655,15 +782,18 @@ function shareCfg() {
   const u = userDoc ? userDoc.data() : {};
   const code = (u && u.referralCode) || '';
   const rc = refCfg();
-  const defaultMsg = `Join me on GodX — save small amounts, earn real interest! 💜\n\n🎁 Use my referral code ${code} at signup and we BOTH get ₹${rc.referredAmount}!\n\nDownload now:`;
-  const link = (s.shareLink || window.location.origin || 'https://godx.app').trim();
+  const defaultMsg = `Join me on GodX — save small amounts, earn real interest! 💜\n\n💸 Sign up with my link — the code fills in automatically — and start earning daily interest today!\n\nMy invite link:`;
+  /* v31: the shared link carries ?ref=<code> so tapping it auto-fills the
+     signup form — the sharer's referral code is never lost */
+  const baseLink = (s.shareLink || window.location.origin || 'https://godx.app').trim().split('?')[0];
+  const link = code ? baseLink + '?ref=' + encodeURIComponent(code) : baseLink;
   const rawMsg = (s.shareMessage && String(s.shareMessage).trim()) || defaultMsg;
-  // token replacement: {code}, {link}, {referrerAmount}, {referredAmount}, {name}
+  // token replacement: {code}, {link}, {level1Pct}, {level2Pct}, {name}
   const msg = rawMsg
     .replace(/\{code\}/g, code)
     .replace(/\{link\}/g, link)
-    .replace(/\{referrerAmount\}/g, rc.referrerAmount)
-    .replace(/\{referredAmount\}/g, rc.referredAmount)
+    .replace(/\{level1Pct\}/g, rc.level1Pct)
+    .replace(/\{level2Pct\}/g, rc.level2Pct)
     .replace(/\{name\}/g, u.name || '');
   return {
     link, message: msg, code,
@@ -721,7 +851,7 @@ function openSharePicker() {
 
   const s = openSheet(`
     <div class="sheet-title">Share GodX 💜</div>
-    <div class="sheet-sub">You earn <b>₹${rc.referrerAmount}</b> and your friend gets <b>₹${rc.referredAmount}</b> when they ${rc.trigger === 'first_plan' ? 'complete their first plan' : 'make their first deposit'}!</div>
+    <div class="sheet-sub">Earn <b>${rc.level1Pct}%</b> of every deposit your friends make (Team 1) — plus <b>${rc.level2Pct}%</b> when THEIR friends deposit (Team 2). On every deposit, forever!</div>
     <div class="share-code-box">
       <div><small>Your Referral Code</small><b>${esc(cfg.code || '—')}</b></div>
       <button class="btn btn-soft btn-sm" id="sh-cpcode" type="button">${IC.copy} Copy</button>
@@ -994,6 +1124,8 @@ async function renderHome() {
     <div id="home-chart">${chartCardHTML(chartCfg())}</div>
 
     <div id="home-ann"></div>
+    <div id="home-login"></div>
+    <div id="home-refer"></div>
 
     <!-- How your money earns — the lending loop, made crystal clear -->
     <div class="sec-head"><h3>How your money earns</h3></div>
@@ -1039,6 +1171,8 @@ async function renderHome() {
   drawFeaturedPlans();
   drawAnnouncements('#home-ann');
   drawAppContent();
+  drawLoginCard(); // daily login bonus card (admin-configured)
+  drawReferralCard(); // personalised refer & earn card
 }
 
 /* ── Featured plans (driven by the live plans listener) ── */
@@ -1112,6 +1246,14 @@ function drawAnnouncements(sel) {
    ══════════════════════════════════════════════════════════ */
 
 const DAY_MS = 86400000;
+
+/* ── Reward wording — admin chooses per plan whether users see "interest"
+     or "returns" (plan.rewardType: 'interest' | 'returns', default interest) ── */
+function rewardLbl(p, singular) {
+  const returns = (p && p.rewardType) === 'returns';
+  return returns ? (singular ? 'Return' : 'returns') : (singular ? 'Interest' : 'interest');
+}
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
 function invStartMs(i) {
   return i.createdAt && i.createdAt.toMillis ? i.createdAt.toMillis()
@@ -1318,12 +1460,14 @@ async function renderPlans() {
         <span class="ph-chip">${IC.checkCircle} 100% Transparent</span>
       </div>
     </div>
+    <div id="plans-banner"></div>
     <div class="sec-head"><h3>Choose your plan</h3></div>
     <div id="plans-list">${livePlans === null ? '<div class="skel skel-card"></div><div class="skel skel-card"></div>' : ''}</div>
     <div class="sec-head"><h3>My Active Plans</h3></div>
     <div id="my-plans"><div class="skel skel-card" style="height:130px"></div></div>`;
 
   drawPlansList();
+  drawPlansBanner();
 
   try {
     const mine = await db.collection('investments').where('uid', '==', currentUser.uid).get();
@@ -1360,16 +1504,16 @@ async function renderPlans() {
         <div class="divider"></div>
         <div style="display:flex;justify-content:space-between;gap:8px;font-size:.8rem;flex-wrap:wrap">
           <span class="muted">Saved: <b style="color:var(--ink)">${inr(i.amount)}</b></span>
-          <span class="muted">Total interest: <b style="color:var(--green)">+${inr2(i.cashbackAmount)}</b></span></div>
+          <span class="muted">Total ${rewardLbl(i)}: <b style="color:var(--green)">+${inr2(i.cashbackAmount)}</b></span></div>
         ${i.status === 'active' ? `
         <div class="interest-strip">
-          <div class="is-cell"><small>Daily interest</small><b>+${inr2(fromPaise(dayPaise(i, 1)))}</b></div>
+          <div class="is-cell"><small>Daily ${rewardLbl(i)}</small><b>+${inr2(fromPaise(dayPaise(i, 1)))}</b></div>
           <div class="is-cell"><small>Credited so far</small><b class="is-acc">+${inr2(accrued)}</b><span class="is-days">${paidN}/${days} days paid</span></div>
           ${interestDone(i)
             ? `<div class="is-cell"><small>Interest</small><b style="color:var(--green)">Complete ✓</b></div>`
             : `<div class="cd-chip" id="cd-${d.id}">
                  <span class="cd-ic">${IC.timer}</span>
-                 <span class="cd-txt"><small>Next Interest</small><b class="cd-val">—</b></span>
+                 <span class="cd-txt"><small>Next ${rewardLbl(i, true)}</small><b class="cd-val">—</b></span>
                </div>`}
         </div>` : ''}
         <div class="mp-progress"><i style="width:${pct}%"></i></div>
@@ -1399,6 +1543,15 @@ async function renderPlans() {
   }
 }
 
+/* ── Full-width banner above the plan list (admin-controlled, live) ── */
+function drawPlansBanner() {
+  const el = $('#plans-banner');
+  if (!el) return;
+  el.innerHTML = livePlanBanner
+    ? `<img class="plans-banner-img" src="${livePlanBanner}" alt="Plans banner" loading="lazy">`
+    : '';
+}
+
 /* ── Plans list (driven by the live plans listener) ── */
 function drawPlansList() {
   const list = $('#plans-list');
@@ -1414,12 +1567,14 @@ const PLAN_ICONS = [IC.spark, IC.star, IC.zap, IC.gift, IC.crown, IC.trend];
 function planCard(p) {
   const idx = (p.minAmount || 0) % 97 % PLAN_COLORS.length;
   const [c1, c2] = PLAN_COLORS[idx];
-  const perks = p.perks && p.perks.length ? p.perks : ['Interest credited every 24 hours', 'Withdraw anytime after maturity', 'Full transaction receipts'];
+  const rl = rewardLbl(p); // admin-chosen wording: 'interest' or 'returns'
+  const perks = p.perks && p.perks.length ? p.perks : [cap(rl) + ' credited every 24 hours', 'Withdraw anytime after maturity', 'Full transaction receipts'];
   const dailyPct = p.durationDays ? (p.cashbackPct / p.durationDays) : 0;
   const dailyEarn = Math.max(1, Math.round(p.minAmount * dailyPct / 100));
   const div = document.createElement('div');
-  div.className = 'plan-card' + (p.popular ? ' is-popular' : '');
+  div.className = 'plan-card' + (p.popular ? ' is-popular' : '') + (p.image ? ' has-banner' : '');
   div.innerHTML = `
+    ${p.image ? `<div class="pc-banner"><img src="${esc(p.image)}" alt="${esc(p.name)} banner" loading="lazy"></div>` : ''}
     <span class="pc-orb pc-orb-a" aria-hidden="true"></span><span class="pc-orb pc-orb-b" aria-hidden="true"></span>
     ${p.popular ? '<div class="ribbon">★ MOST POPULAR</div>' : ''}
     <span class="pc-live"><i></i>Live · paying daily</span>
@@ -1427,11 +1582,11 @@ function planCard(p) {
       <div><div class="pc-name">${esc(p.name)}</div><div class="pc-sub">${esc(p.tagline || 'Savings plan')}</div></div>
       <div class="pc-badge" style="background:linear-gradient(135deg,${c1},${c2})">${PLAN_ICONS[idx]}</div>
     </div>
-    <div class="pc-yield"><b>+${p.cashbackPct}%</b><span>total interest in ${p.durationDays} days</span></div>
+    <div class="pc-yield"><b>+${p.cashbackPct}%</b><span>total ${rl} in ${p.durationDays} days</span></div>
     <div class="pc-daily">${IC.zap}<span>≈ <b>${inr(dailyEarn)}/day</b> on ${inr(p.minAmount)}</span></div>
     <div class="pc-row">
       <div class="pc-cell"><small>Start with</small><b>${inr(p.minAmount)}</b></div>
-      <div class="pc-cell"><small>Total Interest</small><b style="color:var(--green)">${p.cashbackPct}%</b></div>
+      <div class="pc-cell"><small>Total ${cap(rl)}</small><b style="color:var(--green)">${p.cashbackPct}%</b></div>
       <div class="pc-cell"><small>Daily</small><b style="color:var(--green)">${dailyPct.toFixed(2)}%</b></div>
       <div class="pc-cell"><small>Duration</small><b>${p.durationDays}d</b></div>
     </div>
@@ -1445,11 +1600,11 @@ function joinPlan(planId, p) {
   const u = userDoc.data();
   const sheet = openSheet(`
     <div class="sheet-title">Join ${esc(p.name)}</div>
-    <div class="sheet-sub">${p.cashbackPct}% interest over ${p.durationDays} days — credited <b>daily</b> to your wallet · balance ${inr(u.balance)}</div>
+    <div class="sheet-sub">${p.cashbackPct}% ${rewardLbl(p)} over ${p.durationDays} days — credited <b>daily</b> to your wallet · balance ${inr(u.balance)}</div>
     <div class="amount-input"><span>₹</span><input id="join-amt" type="number" inputmode="numeric" placeholder="${p.minAmount}" min="${p.minAmount}"></div>
     <div class="amount-quick">${[p.minAmount, p.minAmount * 2, p.minAmount * 5].map(a => `<button type="button" data-a="${a}">${inr(a)}</button>`).join('')}</div>
     <div class="upi-note"><b>How it works:</b> the amount moves from your wallet into the plan.
-    Every 24 hours from now, <b>${(p.cashbackPct / p.durationDays).toFixed(2)}%</b> of your amount lands back in your wallet as interest.
+    Every 24 hours from now, <b>${(p.cashbackPct / p.durationDays).toFixed(2)}%</b> of your amount lands back in your wallet as ${rewardLbl(p)}.
     At maturity your principal is released too. Early exit returns your principal — already-paid interest is yours to keep.</div>
     <button class="btn btn-primary btn-block" id="join-go" type="button">Confirm & Start Plan</button>`);
   sheet.querySelectorAll('.amount-quick button').forEach(b => b.onclick = () => sheet.querySelector('#join-amt').value = b.dataset.a);
@@ -1616,12 +1771,14 @@ async function renderWallet() {
     list.innerHTML = '';
     docs.forEach((d, i) => {
       const t = d.data();
-      const isIn = ['deposit', 'interest', 'maturity', 'cashback', 'refund'].includes(t.type);
-      const cls = (t.type === 'interest' || t.type === 'cashback') ? 'tx-cb' : isIn ? 'tx-in' : 'tx-out';
-      const icon = t.type === 'interest' ? IC.timer : t.type === 'cashback' ? IC.gift : t.type === 'maturity' ? IC.party : isIn ? IC.downLeft : IC.upRight;
+      // FIX: 'bonus' (register / daily-login bonus) was missing — bonus receipts
+      // rendered as red OUTGOING rows with a minus sign in Transaction History.
+      const isIn = ['deposit', 'interest', 'maturity', 'cashback', 'refund', 'bonus'].includes(t.type);
+      const cls = (t.type === 'interest' || t.type === 'cashback' || t.type === 'bonus') ? 'tx-cb' : isIn ? 'tx-in' : 'tx-out';
+      const icon = t.type === 'interest' ? IC.timer : (t.type === 'cashback' || t.type === 'bonus') ? IC.gift : t.type === 'maturity' ? IC.party : isIn ? IC.downLeft : IC.upRight;
       const labels = { deposit: 'Wallet Deposit', withdraw: t.note || 'Withdrawal', invest: t.note || 'Plan Investment',
                        interest: t.note || 'Daily Interest', maturity: t.note || 'Plan Maturity Payout',
-                       cashback: t.note || 'Cashback Reward', refund: t.note || 'Refund' };
+                       cashback: t.note || 'Cashback Reward', bonus: t.note || 'Bonus Reward', refund: t.note || 'Refund' };
       const chipCls = t.status === 'pending' ? 'chip-amber' : t.status === 'completed' ? 'chip-green' : 'chip-red';
       const row = document.createElement('div');
       row.className = 'tx-item';
@@ -2009,17 +2166,29 @@ async function openWithdraw() {
 function showRefer() {
   const u = userDoc.data();
   const rc = refCfg();
-  const triggerText = rc.trigger === 'first_plan' ? 'completes their first plan' : 'makes their first deposit';
+  const shareLink = shareCfg().link;
   const s = openSheet(`
     <div class="sheet-title">${esc(rc.title)} 🎁</div>
-    <div class="sheet-sub">${esc(rc.description)}<br><br><b>You earn ₹${rc.referrerAmount}</b> and <b>they get ₹${rc.referredAmount}</b> when they ${triggerText}${rc.minDeposit > 0 ? ' (min ₹' + rc.minDeposit + ')' : ''}.</div>
-    <div class="ref-box" style="margin-top:0"><b>${esc(u.referralCode || '—')}</b>
+    <div class="sheet-sub">${esc(rc.description)}</div>
+    <div class="tm-tiers" style="margin-top:0">
+      <div class="tm-tier tm-t1"><small>TEAM 1 · your friends</small><b>${rc.level1Pct}%</b><span>of every deposit they make</span></div>
+      <div class="tm-tier tm-t2"><small>TEAM 2 · their friends</small><b>${rc.level2Pct}%</b><span>of every deposit they make</span></div>
+    </div>
+    <div class="upi-note"><b>How it works:</b> share your invite link — your code fills in automatically
+    at signup. Every time a Team 1 friend's deposit is approved you earn ${rc.level1Pct}% of it, and every
+    time a Team 2 member's deposit is approved you earn ${rc.level2Pct}%. Commissions land in your wallet
+    instantly — on every deposit, forever.${rc.minDeposit > 0 ? ' Minimum qualifying deposit: ' + inr(rc.minDeposit) + '.' : ''}</div>
+    <div class="ref-box" style="margin-top:12px"><b>${esc(u.referralCode || '—')}</b>
       <div>
-        <button class="btn btn-soft btn-sm" id="cp-ref2" type="button">${IC.copy} Copy</button>
+        <button class="btn btn-soft btn-sm" id="cp-ref2" type="button">${IC.copy} Code</button>
+        <button class="btn btn-soft btn-sm" id="cp-reflink" type="button">${IC.copy} Link</button>
         <button class="btn btn-green btn-sm" id="sh-ref2" type="button">${IC.share} Share</button>
-      </div></div>`);
+      </div></div>
+    <button class="btn btn-primary btn-block" id="ref2-team" type="button" style="margin-top:12px">${IC.users} View My Team &amp; Commissions</button>`);
   s.querySelector('#cp-ref2').onclick = () => { navigator.clipboard?.writeText(u.referralCode); toast('Referral code copied', 'ok'); };
+  s.querySelector('#cp-reflink').onclick = () => { navigator.clipboard?.writeText(shareLink); toast('Invite link copied — code auto-fills at signup!', 'ok'); };
   s.querySelector('#sh-ref2').onclick = () => { closeSheet(); openSharePicker(); };
+  s.querySelector('#ref2-team').onclick = () => { closeSheet(); switchView('settings'); };
 }
 
 /* ══════════ SETTINGS ══════════ */
@@ -2042,14 +2211,23 @@ async function renderSettings() {
     <div class="ref-card">
       <div class="ref-head">
         <div class="ref-ic">${IC.gift}</div>
-        <div><b>${esc(refCfg().title)} ₹${refCfg().referrerAmount}</b><p>${esc(refCfg().description)}</p></div>
+        <div><b>${esc(refCfg().title)} — Team Commissions</b><p>${esc(refCfg().description)}</p></div>
       </div>
+      <div class="tm-tiers">
+        <div class="tm-tier tm-t1"><small>TEAM 1 · friends</small><b>${refCfg().level1Pct}%</b><span>of every deposit</span></div>
+        <div class="tm-tier tm-t2"><small>TEAM 2 · their friends</small><b>${refCfg().level2Pct}%</b><span>of every deposit</span></div>
+      </div>
+      <div class="tm-total"><small>TOTAL COMMISSIONS EARNED</small><b id="tm-total">…</b><span id="tm-count">loading your team…</span></div>
       <div class="ref-code">
         <div class="ref-code-val"><small>Your code</small><b>${esc(u.referralCode || '—')}</b></div>
         <div class="ref-actions">
           <button class="ref-btn" id="cp-ref" type="button">${IC.copy} Copy</button>
           <button class="ref-btn ref-btn-gold" id="sh-ref" type="button">${IC.share} Share</button>
         </div>
+      </div>
+      <div class="tm-cols">
+        <div class="tm-col"><div class="tm-col-h tm-h1">${IC.users} Team 1 <span>your friends</span></div><div class="tm-rows" id="tm-list1"><div class="skel skel-row"></div></div></div>
+        <div class="tm-col"><div class="tm-col-h tm-h2">${IC.users} Team 2 <span>friends of friends</span></div><div class="tm-rows" id="tm-list2"><div class="skel skel-row"></div></div></div>
       </div>
     </div>
 
@@ -2087,6 +2265,7 @@ async function renderSettings() {
 
   $('#cp-ref').onclick = () => { navigator.clipboard?.writeText(u.referralCode); toast('Referral code copied', 'ok'); };
   $('#sh-ref').onclick = () => openSharePicker();
+  loadTeamSection(); // v31 — live Team 1 / Team 2 deposits & my commissions
   $('#sw-notif').onclick = e => { const on = !e.currentTarget.classList.contains('on'); e.currentTarget.classList.toggle('on', on); store.set('bgNotif', on ? 'on' : 'off'); toast(on ? 'Notifications on' : 'Notifications off'); };
   $('#sw-bal').onclick = e => { balanceVisible = !balanceVisible; store.set('bgBal', balanceVisible ? 'on' : 'off'); e.currentTarget.classList.toggle('on', balanceVisible); };
   $('#pf-edit').onclick = () => settingsSheet('edit');
@@ -2188,7 +2367,7 @@ async function showNotifications() {
 /* ══════════ SUPPORT — FAQ center + live chat with admin ══════════ */
 const SUPPORT_FAQS = [
   { c: 'Getting Started', q: 'What is GodX?', a: 'GodX is a micro-savings and interest rewards app. You save small amounts in flexible plans, and interest is credited to your wallet daily. No false promises — full terms on every plan.' },
-  { c: 'Getting Started', q: 'How do I create an account?', a: 'Tap Sign Up on the login screen, enter your name, phone, email and a password (min 6 characters). If a friend gave you a referral code, add it — you both earn ₹25 after your first plan completes.' },
+  { c: 'Getting Started', q: 'How do I create an account?', a: 'Tap Sign Up on the login screen, enter your name, phone, email and a password (min 6 characters). If a friend gave you a referral code, add it — or just tap their invite link and the code fills in automatically.' },
   { c: 'Getting Started', q: 'Is there a minimum balance to start?', a: 'No minimum to open an account. Each plan shows its own starting amount (e.g. ₹300) on the plan card — that is all you need in your wallet to join it.' },
   { c: 'Plans & Interest', q: 'How do savings plans work?', a: 'Pick a plan, choose an amount, and it moves from your wallet into the plan for the stated duration. Interest is split into daily slices and credited to your wallet every 24 hours from the exact time you joined. At maturity your principal is released too.' },
   { c: 'Plans & Interest', q: 'When exactly is my daily interest credited?', a: 'Exactly 24 hours after you joined, and every 24 hours after that. Joined at 2:00 PM? Your interest lands at 2:00 PM each day — never at midnight. Every active plan shows a live "Next Interest" countdown.' },
@@ -2202,7 +2381,7 @@ const SUPPORT_FAQS = [
   { c: 'Withdrawals', q: 'Why was my withdrawal rejected?', a: 'Most rejections are due to a bank detail mismatch (wrong IFSC or account number). The full amount is instantly refunded to your wallet — fix your bank details in Wallet and request again, or chat with us below.' },
   { c: 'Account & Security', q: 'Is my money and data safe?', a: 'Yes. All data is encrypted, deposits are processed via regulated payment partners, and every rupee has a visible receipt in your transaction history. We never sell personal data.' },
   { c: 'Account & Security', q: 'How do I change my password?', a: 'Go to Settings → Security → "Email Me a Reset Link". We send a secure password-reset link to your registered email. You can also use "Forgot password?" on the login screen.' },
-  { c: 'Referrals', q: 'How does the referral reward work?', a: 'Share your code from Settings or the Refer button on Home. When a friend signs up with your code and completes their first plan, you BOTH receive a ₹25 reward in your wallets automatically.' }
+  { c: 'Referrals', q: 'How do referral team commissions work?', a: 'Share your invite link from Settings or the Refer button on Home — your code fills in automatically at signup. You earn 10% of every deposit your direct friends make (Team 1) and 5% of every deposit made by their friends (Team 2). Commissions credit instantly on every approved deposit — no limits, no expiry.' }
 ];
 
 /* ══════════ QUICK ANSWERS — tap-to-reply buttons in live chat ══════════
@@ -2223,8 +2402,8 @@ const CHAT_QUICK_REPLIES = [
     a: '⚠️ Most rejections are a bank-detail mismatch — a wrong IFSC or account number. The full amount is instantly refunded to your wallet. Fix your details in Wallet → My Bank Account, then request again. If it happens twice, chat with us here and we\'ll sort it out.' },
   { icon: 'target', label: 'How Plans Work', q: 'How do savings plans work?',
     a: '📦 Pick a plan, choose an amount, and it moves from your wallet into the plan for the stated duration. The total interest is split into daily slices credited every 24 hours from the moment you joined. At maturity your principal is released back to your wallet. Full terms are shown on every plan card before you join.' },
-  { icon: 'gift', label: 'Referral Reward', q: 'How does the referral reward work?',
-    a: '🎁 Share your referral code (Home → Refer or Settings). When a friend signs up with your code and completes their first plan, you BOTH get ₹25 in your wallets — automatically. There\'s no limit: every friend who joins with your code earns you another reward.' },
+  { icon: 'gift', label: 'Team Commissions', q: 'How do referral team commissions work?',
+    a: '🎁 Share your invite link (Home → Refer or Settings) — your code auto-fills at signup. You earn 10% of EVERY deposit your direct friends make (Team 1) and 5% of deposits made by their friends (Team 2). Commissions land in your wallet the moment a deposit is approved — no limits, no expiry. Track both teams live in Settings → Refer & Earn.' },
   { icon: 'clock', label: 'UTR Number', q: 'What is a UTR number and where do I find it?',
     a: '🔢 UTR is the unique 12-digit reference for your payment. In GPay / PhonePe / Paytm, open the transaction you made and tap its details — the UTR / UPI Ref No is listed there. Copy it exactly into the deposit form so we can verify your payment instantly.' }
 ];
@@ -2384,7 +2563,7 @@ async function startSupportChat() {
             `👋 Hi ${u.name || 'there'}! Welcome to GodX Support.\n\n` +
             `You're chatting with our official support team. Tell us your issue — you can attach screenshots or files too. We typically reply within a few minutes.`));
           await msgs.add(bot(
-            `🎁 Refer & Earn: share your referral code ${u.referralCode || ''} with friends — you BOTH get ₹25 in your wallet when they complete their first plan. Find it anytime in Home → Refer or Settings.`));
+            `🎁 Refer & Earn: share your invite link with friends (code ${u.referralCode || ''} auto-fills) — you earn 10% of every deposit your friends make and 5% of their friends' deposits, credited instantly on every approved deposit. Track your teams live in Settings → Refer & Earn.`));
           await msgs.add(bot(
             `💡 Quick answers:\n` +
             `• Add Money — Home / Wallet → Add Money (min ₹50), pay to the official UPI/bank shown, then submit your UTR + screenshot. Credited after verification, usually under 30 min.\n` +
@@ -2699,4 +2878,291 @@ function openChatView(cid) {
   };
   // auto-focus input on desktop
   setTimeout(() => { try { if (window.innerWidth > 640) room.querySelector('#ch-text').focus(); } catch (e) {} }, 350);
+}
+
+/* ══════════ DAILY LOGIN BONUS (admin-configured, e.g. 7-day cycle) ══════════
+   Config lives in appContent/loginBonus: { enabled, days, amounts[], title, subtitle }.
+   · One claim per user per calendar day (IST), validated against SERVER time
+   · Claiming on consecutive days advances the streak (Day 1 → Day N)
+   · Missing a day restarts at Day 1; finishing the cycle starts a fresh one
+   · Firestore transaction + loginPaid/<uid>_<date> lock = never paid twice */
+function bonusCfg() {
+  const b = liveBonuses || {};
+  // FIX: the live listener in bindContentListeners() stores configs keyed by the
+  // Firestore DOC ID ('registerBonus' / 'loginBonus'). Reading '.register'/'.login'
+  // always returned {} → both bonuses stayed permanently OFF in the user app even
+  // after the admin enabled them. (Legacy key fallbacks kept for safety.)
+  const reg = b.registerBonus || b.register || {};
+  const lb = b.loginBonus || b.login || {};
+  const days = Math.min(30, Math.max(1, Number(lb.days) || 7));
+  let amounts = Array.isArray(lb.amounts) ? lb.amounts.map(x => Number(x) || 0) : [];
+  while (amounts.length < days) amounts.push(10);
+  return {
+    register: { enabled: reg.enabled === true && Number(reg.amount) > 0, amount: Number(reg.amount) || 0 },
+    login: { enabled: lb.enabled === true, days, amounts: amounts.slice(0, days),
+             title: lb.title || 'Daily Login Bonus 🎁',
+             subtitle: lb.subtitle || 'Open the app every day and collect your reward!' }
+  };
+}
+/* calendar-day keys in IST so "today" matches Indian users' days */
+const DAY_KEY_OFFSET = 5.5 * 3600000;
+function dayKey(ms) { return new Date(ms + DAY_KEY_OFFSET).toISOString().slice(0, 10); }
+function yesterKey(ms) { return dayKey(ms - 86400000); }
+
+function loginBonusState(u) {
+  const cfg = bonusCfg().login;
+  const today = dayKey(nowMs());
+  const last = u.lastLoginClaim || '';
+  const claimedToday = last === today;
+  const yesterday = last === yesterKey(nowMs());
+  let streak = (claimedToday || yesterday) ? Math.max(0, Number(u.loginStreak) || 0) : 0;
+  // FIX: once the full cycle is collected, the NEXT claim must start a fresh cycle
+  // at Day 1. Previously nextDay was clamped to cfg.days, so a finished 7-day cycle
+  // paid the Day-7 amount again every day forever instead of restarting.
+  if (!claimedToday && streak >= cfg.days) streak = 0;
+  const nextDay = claimedToday ? Math.min(Math.max(streak, 1), cfg.days) : Math.min(streak + 1, cfg.days);
+  const amt = cfg.amounts[nextDay - 1] || 0;
+  const complete = claimedToday && streak >= cfg.days;
+  return { cfg, today, claimedToday, streak, nextDay, amt, complete };
+}
+
+/* auto-popup once per day when a claim is available */
+function loginBonusCheck() {
+  try {
+    if (!currentUser || !userDoc) return;
+    const st = loginBonusState(userDoc.data());
+    if (!st.cfg.enabled || st.claimedToday || !(st.amt > 0)) return;
+    const key = 'gxlb_' + st.today;
+    if (store.get(key) === '1') return; // already shown today on this device
+    store.set(key, '1');
+    showLoginBonus(st);
+  } catch (e) {}
+}
+
+function showLoginBonus(st) {
+  const cfg = st.cfg;
+  if ($('#modal-root').children.length) return; // never stack over another sheet
+  const row = d => {
+    const done = d <= st.streak;
+    const isToday = !st.claimedToday && d === st.nextDay;
+    return `<div class="lb-day ${done ? 'done' : ''} ${isToday ? 'today' : ''}">
+      <small>Day ${d}</small><b>${inr(cfg.amounts[d - 1] || 0)}</b>
+      <span>${done ? '✓' : isToday ? '🎁' : '•'}</span></div>`;
+  };
+  const total = cfg.amounts.reduce((a, b) => a + b, 0);
+  const s = openSheet(`
+    <div class="lb-hero">
+      <div class="lb-gift">${IC.gift}</div>
+      <div class="sheet-title" style="text-align:center">${esc(cfg.title)}</div>
+      <div class="sheet-sub" style="text-align:center">${esc(cfg.subtitle)}</div>
+    </div>
+    <div class="lb-grid">${Array.from({ length: cfg.days }, (_, i) => row(i + 1)).join('')}</div>
+    <div class="lb-total">Complete all ${cfg.days} days → earn <b>${inr(total)}</b> total</div>
+    <div style="height:14px"></div>
+    ${st.claimedToday
+      ? `<button class="btn btn-soft btn-block" id="lb-close" type="button">${st.complete ? 'Cycle complete — amazing! 🎉' : 'Collected ✓ See you tomorrow!'}</button>`
+      : `<button class="btn btn-primary btn-block" id="lb-claim" type="button">${IC.gift} Claim Day ${st.nextDay} — ${inr(st.amt)}</button>`}`);
+  const cb = s.querySelector('#lb-close'); if (cb) cb.onclick = closeSheet;
+  const cl = s.querySelector('#lb-claim');
+  if (cl) cl.onclick = async () => {
+    cl.classList.add('loading'); cl.disabled = true;
+    const got = await claimLoginBonus();
+    if (got > 0) { closeSheet(); confetti(30); toast('Login bonus credited: +' + inr(got) + ' 🎉', 'ok'); }
+    else { cl.classList.remove('loading'); cl.disabled = false; }
+  };
+}
+
+async function claimLoginBonus() {
+  const uRef = db.collection('users').doc(currentUser.uid);
+  const now = firebase.firestore.FieldValue.serverTimestamp();
+  try {
+    const res = await db.runTransaction(async tx => {
+      const s = await tx.get(uRef);
+      if (!s.exists) throw 'gone';
+      const st = loginBonusState(s.data());
+      if (!st.cfg.enabled) throw 'disabled';
+      if (st.claimedToday) return { amount: 0 };
+      const amount = st.amt;
+      if (!(amount > 0)) throw 'no-amount';
+      const lockRef = db.collection('loginPaid').doc(currentUser.uid + '_' + st.today);
+      const lock = await tx.get(lockRef);
+      if (lock.exists) {
+        // FIX (v27b): heal path — the server-side lock says today is already
+        // paid but the user doc drifted (e.g. an earlier tx partially failed).
+        // Sync the user doc so the UI stops offering the claim, without
+        // touching balance (the credit was already applied when the lock was written).
+        tx.update(uRef, {
+          loginStreak: Math.max(st.nextDay, Number(s.data().loginStreak) || 0),
+          lastLoginClaim: st.today });
+        return { amount: 0, healed: true };
+      }
+      // ORDER: lock → transaction receipt → user credit.
+      tx.set(lockRef, { uid: currentUser.uid, date: st.today, day: st.nextDay, amount, createdAt: now });
+      tx.set(db.collection('transactions').doc(), {
+        uid: currentUser.uid, type: 'bonus', amount, status: 'completed',
+        note: `Daily login bonus — Day ${st.nextDay}/${st.cfg.days} 🎁`,
+        userName: (userDoc && userDoc.data().name) || '',
+        createdAt: now });
+      // FIX (v27b): removed lastSeenAt from the credit write. Mixing a
+      // serverTimestamp write with the lockstep balance/cashback check was
+      // occasionally tripping the affectedKeys rule on strict tenants and
+      // denying the whole claim. lastSeenAt is refreshed by syncServerTime()
+      // on its own 10-min heartbeat.
+      tx.update(uRef, {
+        balance: firebase.firestore.FieldValue.increment(amount),
+        totalCashback: firebase.firestore.FieldValue.increment(amount),
+        loginStreak: st.nextDay,
+        lastLoginClaim: st.today });
+      return { amount };
+    });
+    return res.amount || 0;
+  } catch (e) {
+    if (e === 'already' || e === 'disabled') toast('Already collected for today', '');
+    else if (e && e.code === 'permission-denied') toast('Bonus temporarily unavailable — try again in a minute', 'err');
+    else toast('Could not claim — check connection & retry', 'err');
+    return 0;
+  }
+}
+
+/* Login-bonus card on the Home tab — live progress, tap to open the calendar */
+function drawLoginCard() {
+  const el = $('#home-login');
+  if (!el || !userDoc) return;
+  const st = loginBonusState(userDoc.data());
+  if (!st.cfg.enabled) { el.innerHTML = ''; return; }
+  const total = st.cfg.amounts.reduce((a, b) => a + b, 0);
+  el.innerHTML = `
+    <div class="card lb-card" id="lb-open" role="button">
+      <div class="lb-card-l">
+        <div class="lb-card-ic">${IC.gift}</div>
+        <div style="flex:1;min-width:0">
+          <b>${esc(st.cfg.title)}</b>
+          <p>${st.claimedToday
+            ? (st.complete ? 'All ' + st.cfg.days + ' days collected — amazing! 🎉' : 'Today collected ✓ come back tomorrow')
+            : 'Tap to collect Day ' + st.nextDay + ' → ' + inr(st.amt)}</p>
+          <div class="lb-dots">${Array.from({ length: st.cfg.days }, (_, i) => `<i class="${i < st.streak ? 'on' : (!st.claimedToday && i === st.nextDay - 1 ? 'now' : '')}"></i>`).join('')}</div>
+        </div>
+        <div class="lb-card-r"><small>${st.cfg.days}-day total</small><b>${inr(total)}</b>${IC.arrowR}</div>
+      </div>
+    </div>`;
+  el.querySelector('#lb-open').onclick = () => showLoginBonus(loginBonusState(userDoc.data()));
+}
+
+/* ══════════ PERSONALISED REFER & EARN CARD (Home) ══════════
+   Sits directly under the daily-bonus card. Shows, live: my Team-1 size
+   (users.referredBy == my code) and the total commission my whole team's
+   deposits earned me (referralCommissions where referrerUid == me). */
+const RF_IC_USERS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4" fill="currentColor" fill-opacity=".16" stroke="none"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+const RF_IC_COINS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6" fill="currentColor" fill-opacity=".16" stroke="none"/><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/></svg>';
+const RF_IC_SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
+
+function drawReferralCard() {
+  const el = $('#home-refer');
+  if (!el || !currentUser || !userDoc) return;
+  const u = userDoc.data();
+  const rc = refCfg();
+  const code = (u.referralCode || '').trim();
+  el.innerHTML = `
+    <div class="card rf-card" id="rf-open" role="button">
+      <div class="rf-head">
+        <div class="rf-ic">${RF_IC_USERS}</div>
+        <div class="rf-head-t">
+          <b>Refer &amp; Earn ${rc.level1Pct}% + ${rc.level2Pct}%</b>
+          <p>Earn <b>${rc.level1Pct}%</b> of friends' deposits &amp; <b>${rc.level2Pct}%</b> of their friends' deposits</p>
+        </div>
+        ${code ? `<button class="rf-code" id="rf-copy" type="button" title="Tap to copy">${esc(code)}</button>` : ''}
+      </div>
+      <div class="rf-stats">
+        <div class="rf-stat">
+          <span class="rf-stat-ic rf-ic-users">${RF_IC_USERS}</span>
+          <span class="rf-stat-t"><b id="rf-count">…</b><small>Team 1 friends</small></span>
+        </div>
+        <div class="rf-div"></div>
+        <div class="rf-stat">
+          <span class="rf-stat-ic rf-ic-coins">${RF_IC_COINS}</span>
+          <span class="rf-stat-t"><b id="rf-earn">…</b><small>Commission earned</small></span>
+        </div>
+        <button class="rf-share" id="rf-share" type="button">${RF_IC_SHARE}<span>Invite</span></button>
+      </div>
+    </div>`;
+  const open = el.querySelector('#rf-open');
+  open.onclick = () => showRefer();
+  const cp = el.querySelector('#rf-copy');
+  if (cp) cp.onclick = e => { e.stopPropagation(); navigator.clipboard?.writeText(code); toast('Referral code copied', 'ok'); };
+  el.querySelector('#rf-share').onclick = e => { e.stopPropagation(); openSharePicker(); };
+
+  /* live stats — re-render safe: old listeners are dropped before new ones */
+  if (el._rfUnsub) { try { el._rfUnsub(); } catch (e) {} el._rfUnsub = null; }
+  if (el._rfUnsub2) { try { el._rfUnsub2(); } catch (e) {} el._rfUnsub2 = null; }
+  const cEl = el.querySelector('#rf-count'), mEl = el.querySelector('#rf-earn');
+  const zero = () => { if (cEl) cEl.textContent = '0'; if (mEl) mEl.textContent = inr(0); };
+  if (!code) return zero();
+  el._rfUnsub = db.collection('users').where('referredBy', '==', code)
+    .onSnapshot(s => { if (cEl) cEl.textContent = s.size; }, () => { if (cEl) cEl.textContent = '0'; });
+  el._rfUnsub2 = db.collection('referralCommissions').where('referrerUid', '==', currentUser.uid)
+    .onSnapshot(s => { let sum = 0; s.forEach(d => sum += d.data().amount || 0); if (mEl) mEl.textContent = inr(sum); }, () => { if (mEl) mEl.textContent = inr(0); });
+}
+
+/* ══════════ MY TEAM (Settings) — live 2-level breakdown ══════════
+   Team 1 = users whose referredBy == my code.  Team 2 = users referred by a
+   Team 1 member.  Every member row shows their name, verified deposit total
+   and the commission their deposits have earned me, plus overall totals.
+   Live: the commission listener re-draws whenever a teammate's deposit
+   gets approved. */
+let _tmUnsub = [];
+async function loadTeamSection() {
+  _tmUnsub.forEach(f => { try { f(); } catch (e) {} }); _tmUnsub = [];
+  const list1 = $('#tm-list1'), list2 = $('#tm-list2'),
+        totEl = $('#tm-total'), cntEl = $('#tm-count');
+  if (!list1 || !list2 || !currentUser || !userDoc) return;
+  const rc = refCfg();
+  const code = (userDoc.data().referralCode || '').trim();
+  const row = (m, pct) => {
+    const comm = (m.commissions || []).reduce((a, c) => a + (c.amount || 0), 0);
+    return `<div class="tm-row">
+      <div class="tm-av">${esc((m.name || 'U')[0].toUpperCase())}</div>
+      <div class="tm-mid"><b>${esc(m.name || 'User')}</b><small>Deposited ${inr(m.totalDeposits || 0)}${(m.totalDeposits || 0) > 0 ? ' · your ' + pct + '%' : ''}</small></div>
+      <b class="tm-earn ${comm > 0 ? 'on' : ''}">+${inr2(comm)}</b></div>`;
+  };
+  const empty = t => `<div class="tm-empty">${IC.users}<p>${t}</p></div>`;
+  try {
+    const t1Snap = await db.collection('users').where('referredBy', '==', code).get();
+    const t1 = t1Snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    const t1Codes = t1.map(x => (x.referralCode || '').trim()).filter(Boolean);
+    const t2 = [];
+    if (t1Codes.length) {
+      /* Firestore 'in' supports max 10 values — chunk the query */
+      for (let i = 0; i < t1Codes.length; i += 10) {
+        try {
+          const s2 = await db.collection('users').where('referredBy', 'in', t1Codes.slice(i, i + 10)).get();
+          s2.docs.forEach(d => t2.push({ uid: d.id, ...d.data() }));
+        } catch (e) {}
+      }
+    }
+    /* one live commission listener drives every row + the totals */
+    let comms = [];
+    const draw = () => {
+      if (!document.body.contains(list1)) return;
+      const bySource = {};
+      comms.forEach(c => { (bySource[c.sourceUid] = bySource[c.sourceUid] || []).push(c); });
+      t1.forEach(m => { m.commissions = bySource[m.uid] || []; });
+      t2.forEach(m => { m.commissions = bySource[m.uid] || []; });
+      t1.sort((a, b) => (b.totalDeposits || 0) - (a.totalDeposits || 0));
+      t2.sort((a, b) => (b.totalDeposits || 0) - (a.totalDeposits || 0));
+      list1.innerHTML = t1.length ? t1.map(m => row(m, rc.level1Pct)).join('') : empty('No friends yet — share your invite link!');
+      list2.innerHTML = t2.length ? t2.map(m => row(m, rc.level2Pct)).join('') : empty('No Team 2 yet — it grows when your friends refer people');
+      const tot = comms.reduce((a, c) => a + (c.amount || 0), 0);
+      if (totEl) totEl.textContent = inr2(tot);
+      if (cntEl) cntEl.textContent = t1.length + ' friend' + (t1.length === 1 ? '' : 's') + ' · ' + t2.length + ' in team 2 · ' + comms.length + ' commission' + (comms.length === 1 ? '' : 's');
+    };
+    _tmUnsub.push(db.collection('referralCommissions')
+      .where('referrerUid', '==', currentUser.uid)
+      .onSnapshot(s => { comms = s.docs.map(d => d.data()); draw(); }, () => draw()));
+    draw();
+  } catch (e) {
+    list1.innerHTML = empty('Could not load your team — check connection');
+    list2.innerHTML = '';
+    if (totEl) totEl.textContent = inr2(0);
+    if (cntEl) cntEl.textContent = 'team unavailable';
+  }
 }
