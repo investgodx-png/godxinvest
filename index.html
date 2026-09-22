@@ -124,7 +124,7 @@
         {
           "@type": "Question",
           "name": "How does the GodX Refer & Earn program work?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Share your referral code with friends. When a friend signs up with your code and completes their first deposit or plan, both of you receive a cash bonus in your wallets." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Share your invite link — your referral code auto-fills at signup. You earn 10% of every deposit your friends make (Team 1) and 5% of deposits made by their friends (Team 2), credited instantly on every approved deposit." }
         }
       ]
     },
@@ -193,6 +193,35 @@
     if(now-lastTap<300)e.preventDefault();
     lastTap=now;
   },{passive:false});
+})();
+</script>
+
+<!-- ══ REFERRAL DEEP-LINK — captures ?ref=CODE from shared invite links, stores it,
+     switches the auth card to Sign Up and pre-fills the referral code field so the
+     shared user's code is never lost ══ -->
+<script>
+(function(){
+  try{
+    var q=new URLSearchParams(window.location.search);
+    var ref=(q.get('ref')||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,20);
+    if(!ref)return;
+    try{localStorage.setItem('gxRef',ref);}catch(e){}
+    var fill=function(){
+      var i=document.getElementById('su-ref');
+      if(i&&!i.value){i.value=ref;i.dispatchEvent(new Event('input',{bubbles:true}));}
+      var lt=document.getElementById('tab-login'),st=document.getElementById('tab-signup');
+      if(lt&&st&&!st.classList.contains('active')){
+        var fs=document.getElementById('form-signup');
+        if(fs&&fs.classList.contains('hidden')){
+          lt.classList.remove('active');st.classList.add('active');
+          var tabs=document.getElementById('auth-tabs');if(tabs)tabs.classList.add('show-signup');
+          var fl=document.getElementById('form-login');if(fl)fl.classList.add('hidden');
+          fs.classList.remove('hidden');
+        }
+      }
+    };
+    if(document.readyState!=='loading')fill();else document.addEventListener('DOMContentLoaded',fill);
+  }catch(e){}
 })();
 </script>
 
@@ -331,7 +360,7 @@
         </label>
         <div class="su-perk">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-          <span>Sign up with a friend's code — you <b>both earn ₹25</b> after their first plan.</span>
+          <span>Invited by a friend? Paste their code — or tap their invite link and it <b>fills in automatically</b>. They earn commission on your deposits!</span>
         </div>
         <!-- submit + note live INSIDE the scroll area so the mobile keyboard can never cover them -->
         <button class="btn btn-primary btn-block btn-hero" type="submit">
