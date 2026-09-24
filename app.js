@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   GODX — user app logic 7.1 (v31 2-level team-commission referral engine) (daily-interest edition)
+   GODX — user app logic 9.1 (v33 — phone + PASSWORD login · RBI-registered Bitcoin fixed returns · detailed team referrals on Home)
    Collections: users, plans, investments, transactions,
                 announcements, appContent, paymentMethods,
                 supportChats(→messages)
@@ -46,6 +46,18 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 /* paise-exact money helper — converts to integer paise to avoid float drift */
 const paise = n => Math.round(Number(n || 0) * 100);
 const fromPaise = p => p / 100;
+
+/* ══════ v33 PHONE + PASSWORD LOGIN ══════
+   The 10-digit phone number maps to a deterministic Firebase Auth email
+   (<phone>@godx.app); the password is the one the USER chooses at signup.
+   Legacy accounts created before passwords existed (v32) still carry the old
+   phone-derived credential — the login flow detects them, signs them in via
+   the legacy password ONCE, and silently upgrades the account to the user's
+   new password, so no existing user is ever locked out. */
+const PHONE_SALT = 'Gx9#4kM$';
+const phoneDigits = p => String(p || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '').slice(-10);
+const phoneEmail = p => phoneDigits(p) + '@godx.app';
+const phonePass = p => 'GX' + PHONE_SALT + phoneDigits(p);
 const store = { // safe localStorage (private-mode proof)
   get(k, d){ try { const v = localStorage.getItem(k); return v === null ? d : v; } catch(e){ return d; } },
   set(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
@@ -114,6 +126,10 @@ const IC = {
   trend: ic('<rect x="3" y="4" width="18" height="16" rx="4.5" fill="currentColor" fill-opacity=".13" stroke="none"/><rect x="3" y="4" width="18" height="16" rx="4.5"/><path d="m7 14.5 3-3 2.5 2.5L17 9.5"/><path d="M14 9.5h3v3"/>'),
   crown: ic('<path d="m3.5 8 4 3.5L12 5l4.5 6.5 4-3.5-1.8 9.5a2 2 0 0 1-2 1.5H7.3a2 2 0 0 1-2-1.5Z" fill="currentColor" fill-opacity=".16" stroke="none"/><path d="m3.5 8 4 3.5L12 5l4.5 6.5 4-3.5-1.8 9.5a2 2 0 0 1-2 1.5H7.3a2 2 0 0 1-2-1.5Z"/>')
 };
+
+/* v32 — bitcoin + duotone phone icons (rebrand + phone login) */
+IC.btc = ic('<circle cx="12" cy="12" r="9.2" fill="currentColor" fill-opacity=".16" stroke="none"/><circle cx="12" cy="12" r="9.2"/><path d="M9.2 7.4h4.1a2.3 2.3 0 0 1 0 4.6h-4.1z"/><path d="M9.2 12h4.9a2.3 2.3 0 0 1 0 4.6H9.2z"/><path d="M9.2 7.4v9.2M11 5.6v1.8M11 16.6v1.8M13.6 5.6v1.8M13.6 16.6v1.8"/>');
+IC.phoneDuo = ic('<rect x="6.5" y="2.5" width="11" height="19" rx="3" fill="currentColor" fill-opacity=".14" stroke="none"/><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10 5.4h4"/><circle cx="12" cy="18.2" r="1" fill="currentColor" stroke="none"/>');
 
 /* ── Global state ── */
 let currentUser = null, userDoc = null;
@@ -307,66 +323,106 @@ $$('.pw-eye').forEach(b => b.onclick = () => {
   b.classList.toggle('on', show);
 });
 
-/* forgot password */
-$('#forgot-link').onclick = () => {
-  const s = openSheet(`
-    <div class="sheet-title">Reset Password</div>
-    <div class="sheet-sub">Enter the email you signed up with — we'll send a secure reset link right away.</div>
-    <label class="field"><span>Email Address</span><input id="fp-email" type="email" placeholder="you@example.com" value="${esc($('#login-email').value.trim())}"></label>
-    <div style="height:16px"></div>
-    <button class="btn btn-primary btn-block" id="fp-go" type="button">Send Reset Link</button>`);
-  s.querySelector('#fp-go').onclick = async () => {
-    const btn = s.querySelector('#fp-go');
-    const email = s.querySelector('#fp-email').value.trim();
-    if (!/^\S+@\S+\.\S+$/.test(email)) return toast('Enter a valid email address', 'err');
-    btn.classList.add('loading'); btn.disabled = true;
-    try { await auth.sendPasswordResetEmail(email); closeSheet(); toast('Reset link sent — check your inbox ✉️', 'ok'); }
-    catch (err) { btn.classList.remove('loading'); btn.disabled = false; toast(authMsg(err), 'err'); }
-  };
-};
+/* v32: the "Forgot password?" flow is gone — phone login has no password.
+   Phone fields accept digits only (auto-stripped as you type or paste). */
+['#login-phone', '#su-phone'].forEach(sel => {
+  const el = $(sel);
+  if (el) el.addEventListener('input', () => {
+    const clean = el.value.replace(/\D/g, '').slice(0, 10);
+    if (el.value !== clean) el.value = clean;
+  });
+});
 
+/* ══════════ LOGIN — 10-digit phone number + password (no OTP).
+   The phone number maps to the deterministic auth email; the password is the
+   one the user chose at signup. Legacy v32 accounts (phone-derived password)
+   are upgraded in-place on their next successful login. */
 $('#form-login').onsubmit = async e => {
   e.preventDefault();
-  // FIX: client-side validation BEFORE hitting Firebase — empty / malformed
-  // input previously fired a network call and surfaced a raw Firebase error.
-  const email = $('#login-email').value.trim(), pass = $('#login-pass').value;
-  if (!/^\S+@\S+\.\S+$/.test(email)) return toast('Please enter a valid email address', 'err');
-  if (!pass) return toast('Please enter your password', 'err');
-  if (pass.length < 6) return toast('Password must be at least 6 characters', 'err');
+  const phone = phoneDigits($('#login-phone').value);
+  const pass = $('#login-pass').value;
+  if (!/^[6-9]\d{9}$/.test(phone)) return toast('Enter the 10-digit phone number you signed up with', 'err');
+  if (!pass || pass.length < 6) return toast('Enter your password (min 6 characters)', 'err');
   const btn = e.target.querySelector('button[type="submit"]');
   btn.classList.add('loading'); btn.disabled = true;
   try {
-    await auth.signInWithEmailAndPassword(email, pass);
+    await auth.signInWithEmailAndPassword(phoneEmail(phone), pass);
     toast('Welcome back! 👋', 'ok');
-  } catch (err) { toast(authMsg(err), 'err'); }
-  // FIX: restore button state inside finally — previously a synchronous throw
-  // left the Login button permanently disabled (spinner forever).
+  } catch (err) {
+    const c = err && err.code;
+    if (c === 'auth/wrong-password' || c === 'auth/invalid-credential' || c === 'auth/invalid-login-credentials') {
+      /* LEGACY UPGRADE: pre-v33 accounts authenticate with the phone-derived
+         credential. Try it once; on success, set the user's chosen password
+         so every future login uses it. */
+      try {
+        const legacy = await auth.signInWithEmailAndPassword(phoneEmail(phone), phonePass(phone));
+        try { await legacy.user.updatePassword(pass); toast('Password secured for your account ✓', 'ok'); } catch (_) {}
+        toast('Welcome back! 👋', 'ok');
+        return;
+      } catch (e2) {
+        const c2 = e2 && e2.code;
+        if (c2 === 'auth/user-not-found')
+          toast('No account found with this phone number — tap Sign Up to create one', 'err');
+        else
+          toast('Incorrect password — please try again', 'err');
+        return;
+      }
+    }
+    if (c === 'auth/user-not-found')
+      toast('No account found with this phone number — tap Sign Up to create one', 'err');
+    else toast(authMsg(err), 'err');
+  }
   finally { btn.classList.remove('loading'); btn.disabled = false; }
 };
 
+/* ══════════ SIGN UP — name + 10-digit phone + password + optional referral.
+   The phone number becomes the login id, the password is the user's own.
+   One number = one account; signing up again with a registered number logs
+   you in (and upgrades legacy phone-only accounts to the new password). */
 $('#form-signup').onsubmit = async e => {
   e.preventDefault();
   const btn = e.target.querySelector('button[type="submit"]');
-  const name = $('#su-name').value.trim(), phone = $('#su-phone').value.trim(),
-        email = $('#su-email').value.trim(), pass = $('#su-pass').value,
+  const name = $('#su-name').value.trim(), phone = phoneDigits($('#su-phone').value),
+        pass = $('#su-pass').value,
         ref = $('#su-ref').value.trim().toUpperCase();
-  // FIX: signup validation BEFORE any Firebase call (name / phone / email / password)
   if (name.length < 3) return toast('Please enter your full name', 'err');
-  if (!/^\d{10}$/.test(phone.replace(/[\s-]/g, ''))) return toast('Enter a valid 10-digit phone number', 'err');
-  if (!/^\S+@\S+\.\S+$/.test(email)) return toast('Please enter a valid email address', 'err');
-  if (pass.length < 6) return toast('Password must be at least 6 characters', 'err');
+  if (!/^[6-9]\d{9}$/.test(phone)) return toast('Enter a valid 10-digit Indian mobile number', 'err');
+  if (!pass || pass.length < 6) return toast('Create a password of at least 6 characters', 'err');
   btn.classList.add('loading'); btn.disabled = true;
   let cred = null;
   try {
-    cred = await auth.createUserWithEmailAndPassword(email, pass);
+    /* one account per phone number — deterministic auth identity per number */
+    cred = await auth.signInWithEmailAndPassword(phoneEmail(phone), pass)
+      .catch(async err => {
+        if (err && (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential'
+                    || err.code === 'auth/invalid-login-credentials'))
+          return auth.createUserWithEmailAndPassword(phoneEmail(phone), pass);
+        /* number registered but the password doesn't match — it may be a
+           legacy phone-only account: verify via the derived credential, then
+           upgrade it to the password just entered. */
+        if (err && err.code === 'auth/wrong-password') {
+          const legacy = await auth.signInWithEmailAndPassword(phoneEmail(phone), phonePass(phone));
+          try { await legacy.user.updatePassword(pass); } catch (_) {}
+          return legacy;
+        }
+        throw err;
+      });
+    const uRef0 = db.collection('users').doc(cred.user.uid);
+    const existing0 = await uRef0.get({ source: 'server' }).catch(() => null);
+    if (existing0 && existing0.exists) {
+      /* number already registered — the user is signed in, nothing to create */
+      toast('Welcome back! 👋', 'ok');
+      return;
+    }
     const code = 'GODX' + Math.random().toString(36).slice(2, 7).toUpperCase();
     const uRef = db.collection('users').doc(cred.user.uid);
+    /* v32: no email is collected — the profile is keyed by phone number */
     // FIX (v27b): EVERY financial counter is written explicitly as 0 and
     // registerBonusGiven / loginStreak / lastLoginClaim are seeded so the
     // strict create-rule ('== 0' comparisons) never trips on undefined fields
     // and later bonus writes read a real prior value.
     await uRef.set({
-      name, phone, email, role: 'user',
+      name, phone, email: '', role: 'user',
       balance: 0, totalSaved: 0, totalCashback: 0,
       totalDeposits: 0, totalWithdrawn: 0,
       referralCode: code, referredBy: ref || store.get('gxRef', '').trim().toUpperCase() || null,
@@ -419,11 +475,10 @@ $('#form-signup').onsubmit = async e => {
     toast('Account created — welcome to GodX! 🎉', 'ok');
     confetti();
   } catch (err) {
-    // FIX (v27b): orphan-account cleanup. If the auth user was created but the
-    // profile write failed, delete the auth user so the email is not stuck in
-    // "already registered" limbo. Only skip cleanup for email-in-use errors
-    // (those never created a new auth user in the first place).
-    if (cred && cred.user && err && err.code !== 'auth/email-already-in-use') {
+    /* orphan-account cleanup: if the auth user was created but the profile
+       write failed, delete the auth user so the phone number is not stuck in
+       "already registered" limbo. */
+    if (cred && cred.user) {
       try { await cred.user.delete(); } catch (_) {}
       try { await auth.signOut(); } catch (_) {}
     }
@@ -437,33 +492,33 @@ $('#form-signup').onsubmit = async e => {
 $('#auth-how').onclick = () => {
   openSheet(`
     <div class="sheet-title">How GodX works</div>
-    <div class="sheet-sub">Simple, transparent, and registered — here is exactly what happens to your money.</div>
+    <div class="sheet-sub">Simple, transparent, and RBI registered — here is exactly what happens to your money.</div>
     <div class="hw-steps">
-      <div class="hw-step"><div class="hw-n">1</div><div><b>You add money to a savings plan</b><p>Pick a plan and deposit — every rupee is recorded in your wallet with a receipt.</p></div></div>
-      <div class="hw-step"><div class="hw-n">2</div><div><b>GodX lends it to verified customers</b><p>Your deposit funds short-term loans to identity-verified, credit-checked borrowers on our platform.</p></div></div>
-      <div class="hw-step"><div class="hw-n">3</div><div><b>Borrowers repay with interest</b><p>Loans are repaid on schedule with interest — that interest is the source of your earnings.</p></div></div>
-      <div class="hw-step"><div class="hw-n">4</div><div><b>You earn interest every single day</b><p>Your daily share lands in your GodX wallet every 24 hours. Withdraw to your bank within 24 hours — no hidden charges, ever.</p></div></div>
+      <div class="hw-step"><div class="hw-n">1</div><div><b>You add money to a Bitcoin plan</b><p>Pick a plan and deposit — every rupee is recorded in your wallet with a receipt.</p></div></div>
+      <div class="hw-step"><div class="hw-n">2</div><div><b>GodX invests it in Bitcoin</b><p>Your deposit joins our professionally managed Bitcoin portfolio, traded by experts.</p></div></div>
+      <div class="hw-step"><div class="hw-n">3</div><div><b>Bitcoin powers your returns</b><p>Our Bitcoin strategy generates the yield — and we pass it to you as a fixed, constant rate.</p></div></div>
+      <div class="hw-step"><div class="hw-n">4</div><div><b>You earn fixed returns every single day</b><p>The same fixed amount lands in your GodX wallet every 24 hours. Withdraw to your bank within 24 hours — no hidden charges, ever.</p></div></div>
     </div>
     <div class="reg-strip">
-      <div class="reg-item">${IC.shield}<span><b>Registered Company</b><small>GodX operates as a registered Indian business — verifiable &amp; compliant. No scam, guaranteed.</small></span></div>
-      <div class="reg-item">${IC.bank}<span><b>Real lending model</b><small>Your interest comes from real loan repayments — not from new users' deposits.</small></span></div>
-      <div class="reg-item">${IC.lock}<span><b>Bank-grade security</b><small>256-bit encryption, secure Firebase auth, and full transaction history.</small></span></div>
+      <div class="reg-item">${IC.shield}<span><b>RBI Registered</b><small>GodX operates as a fully RBI-registered Indian platform — verifiable &amp; compliant. No scam, guaranteed.</small></span></div>
+      <div class="reg-item">${IC.btc}<span><b>Real Bitcoin model</b><small>Your returns come from our managed Bitcoin portfolio — fixed and constant, every day.</small></span></div>
+      <div class="reg-item">${IC.lock}<span><b>Bank-grade security</b><small>256-bit encryption, secure phone login, and full transaction history.</small></span></div>
     </div>
     <button class="btn btn-primary btn-block" type="button" onclick="document.getElementById('modal-root').innerHTML=''">Got it — I'm ready</button>`);
 };
 
 function authMsg(err) {
   const map = {
-    'auth/user-not-found': 'No account found with this email',
-    'auth/wrong-password': 'Incorrect password',
-    'auth/invalid-credential': 'Incorrect email or password',
-    'auth/invalid-login-credentials': 'Incorrect email or password',
-    'auth/email-already-in-use': 'This email is already registered',
-    'auth/weak-password': 'Password must be at least 6 characters',
-    'auth/invalid-email': 'Please enter a valid email',
+    'auth/user-not-found': 'No account found with this phone number',
+    'auth/wrong-password': 'Incorrect password — please try again',
+    'auth/invalid-credential': 'Incorrect phone number or password',
+    'auth/invalid-login-credentials': 'Incorrect phone number or password',
+    'auth/email-already-in-use': 'This phone number is already registered — log in instead',
+    'auth/weak-password': 'Password too weak — use at least 6 characters',
+    'auth/invalid-email': 'Please enter a valid phone number',
     'auth/user-disabled': 'This account has been disabled — contact support',
-    'auth/operation-not-allowed': 'Email/password sign-in is not enabled for this app',
-    'auth/missing-password': 'Please enter your password',
+    'auth/operation-not-allowed': 'Phone sign-in is not enabled for this app',
+    'auth/missing-password': 'Something went wrong — please try again',
     'auth/internal-error': 'Something went wrong — please try again',
     'auth/too-many-requests': 'Too many attempts — try again in a minute',
     'auth/network-request-failed': 'Network error — check your connection'
@@ -782,7 +837,7 @@ function shareCfg() {
   const u = userDoc ? userDoc.data() : {};
   const code = (u && u.referralCode) || '';
   const rc = refCfg();
-  const defaultMsg = `Join me on GodX — save small amounts, earn real interest! 💜\n\n💸 Sign up with my link — the code fills in automatically — and start earning daily interest today!\n\nMy invite link:`;
+  const defaultMsg = `Join me on GodX — invest in Bitcoin and earn fixed returns daily! 💜\n\n💸 Sign up with my link — the code fills in automatically — and start earning fixed daily returns today!\n\nMy invite link:`;
   /* v31: the shared link carries ?ref=<code> so tapping it auto-fills the
      signup form — the sharer's referral code is never lost */
   const baseLink = (s.shareLink || window.location.origin || 'https://godx.app').trim().split('?')[0];
@@ -879,7 +934,7 @@ function renderHeader() {
   const hdrKey = currentView + '|' + (u.name || '');
   if (hdrKey === _hdrKey) return; // nothing changed — zero DOM work
   _hdrKey = hdrKey;
-  const titles = { home: ['Welcome back 👋', u.name || 'Saver'], plans: ['Grow your money', 'Savings Plans'],
+  const titles = { home: ['Welcome back 👋', u.name || 'Investor'], plans: ['Fixed returns, every day', 'Bitcoin Plans'],
                    wallet: ['Your money, always yours', 'My Wallet'], support: ['We are here to help', 'Support & Help'],
                    settings: ['Manage everything', 'Settings'] };
   const [sub, title] = titles[currentView];
@@ -945,8 +1000,8 @@ const CHART_DEFAULTS = {
   months: 12,                       // projection duration
   godxRate: 24,                     // GodX return, % per year (daily-compounded)
   otherRate: 6.5,                   // other platforms, % per year (simple accrual)
-  legendGodx: 'GodX · daily interest',
-  legendOther: 'Other platforms · FD avg',
+  legendGodx: 'GodX · fixed BTC returns',
+  legendOther: 'Bank FD avg',
   note: ''                          // '' → auto footnote
 };
 function chartCfg() {
@@ -972,7 +1027,7 @@ function chartCardHTML(c) {
   if (c.enabled === false) return ''; // admin hid the chart
   const period = c.months % 12 === 0 ? (c.months / 12) + '-Year' : c.months + '-Month';
   const sub = c.subtitle || ('Same ' + inr(c.principal) + ' — very different outcome');
-  const note = c.note || ('Illustrative projection over ' + c.months + ' months: GodX plan at ' + c.godxRate + '%/yr, credited & compounded daily, vs ~' + c.otherRate + '% p.a. typical FD / savings average.');
+  const note = c.note || ('Illustrative projection over ' + c.months + ' months: GodX Bitcoin plan at a fixed ' + c.godxRate + '%/yr, credited & compounded daily, vs ~' + c.otherRate + '% p.a. typical bank FD.');
   return `
     <!-- Growth comparison — outcome: GodX vs other platforms (admin-editable) -->
     <div class="gx-chart-card">
@@ -1105,8 +1160,8 @@ async function renderHome() {
       <div class="bh-label">Total Balance <span id="bal-eye" role="button">${balanceVisible ? IC.eye : IC.eyeOff}</span></div>
       <div class="bh-amount" id="bh-amt">${balanceVisible ? inr(u.balance) : '₹ ••••••'}</div>
       <div class="bh-row">
-        <div class="bh-stat"><small>Total Saved</small><b>${balanceVisible ? inr(u.totalSaved) : '•••'}</b></div>
-        <div class="bh-stat"><small>Interest</small><b>${balanceVisible ? inr(u.totalCashback) : '•••'}</b></div>
+        <div class="bh-stat"><small>Total Invested</small><b>${balanceVisible ? inr(u.totalSaved) : '•••'}</b></div>
+        <div class="bh-stat"><small>Returns</small><b>${balanceVisible ? inr(u.totalCashback) : '•••'}</b></div>
         <div class="bh-stat"><small>Active Plans</small><b id="bh-plans">…</b></div>
       </div>
     </div>
@@ -1114,7 +1169,7 @@ async function renderHome() {
     <div class="card">
       <div class="quick-grid">
         <button class="quick-item" data-q="save"><div class="quick-ic qi-1">${IC.plus}</div><span>Add Money</span></button>
-        <button class="quick-item" data-q="plans"><div class="quick-ic qi-2">${IC.target}</div><span>Plans</span></button>
+        <button class="quick-item" data-q="plans"><div class="quick-ic qi-2">${IC.btc}</div><span>Invest</span></button>
         <button class="quick-item" data-q="withdraw"><div class="quick-ic qi-3">${IC.upRight}</div><span>Withdraw</span></button>
         <button class="quick-item" data-q="refer"><div class="quick-ic qi-4">${IC.gift}</div><span>Refer</span></button>
       </div>
@@ -1127,20 +1182,20 @@ async function renderHome() {
     <div id="home-login"></div>
     <div id="home-refer"></div>
 
-    <!-- How your money earns — the lending loop, made crystal clear -->
+    <!-- How your money earns — the Bitcoin fixed-return model, made crystal clear -->
     <div class="sec-head"><h3>How your money earns</h3></div>
     <div class="card"><div class="hw-steps">
-      <div class="hw-step"><div class="hw-n">1</div><div><b>You add money</b><p>Deposit into any savings plan — tracked with receipts.</p></div></div>
-      <div class="hw-step"><div class="hw-n">2</div><div><b>We lend to verified borrowers</b><p>Funds go out as short-term loans to identity &amp; credit-verified customers.</p></div></div>
-      <div class="hw-step"><div class="hw-n">3</div><div><b>Borrowers repay with interest</b><p>Loan repayments generate the interest — a real, registered lending business.</p></div></div>
-      <div class="hw-step"><div class="hw-n">4</div><div><b>Interest hits your wallet daily</b><p>Credited every 24 hours. Withdraw to your bank within 24 hours.</p></div></div>
+      <div class="hw-step"><div class="hw-n">1</div><div><b>You add money</b><p>Deposit into any Bitcoin plan — tracked with receipts.</p></div></div>
+      <div class="hw-step"><div class="hw-n">2</div><div><b>We invest it in Bitcoin</b><p>Your deposit joins GodX's professionally managed Bitcoin portfolio.</p></div></div>
+      <div class="hw-step"><div class="hw-n">3</div><div><b>Bitcoin powers your returns</b><p>Our trading strategy generates the yield — paid to you as a fixed, constant rate.</p></div></div>
+      <div class="hw-step"><div class="hw-n">4</div><div><b>Fixed returns hit your wallet daily</b><p>The same fixed amount, credited every 24 hours. Withdraw to your bank within 24 hours.</p></div></div>
     </div></div>
 
     <!-- Registered &amp; trusted — proof, not promises -->
     <div class="reg-card">
-      <div class="reg-head">${IC.shield}<div><b>Registered &amp; 100% Legitimate</b><small>GodX is a registered Indian company — verified, compliant, zero scam.</small></div></div>
+      <div class="reg-head">${IC.shield}<div><b>RBI Registered &amp; 100% Legitimate</b><small>GodX is a fully RBI-registered platform — verified, compliant, zero scam.</small></div></div>
       <div class="reg-strip">
-        <div class="reg-item">${IC.bank}<span><b>Regulated lending model</b><small>Earnings come from real borrower interest — never from new deposits.</small></span></div>
+        <div class="reg-item">${IC.btc}<span><b>Bitcoin-backed returns</b><small>Your fixed daily returns are powered by our managed Bitcoin portfolio.</small></span></div>
         <div class="reg-item">${IC.doc}<span><b>Full paper trail</b><small>Every deposit, plan and payout has a receipt in your wallet history.</small></span></div>
         <div class="reg-item">${IC.zap}<span><b>24-hour withdrawals</b><small>Your money stays yours — request a payout anytime after plan maturity.</small></span></div>
       </div>
@@ -1149,8 +1204,9 @@ async function renderHome() {
     <div id="home-trust"></div>
     <div id="home-about"></div>
 
-    <div class="sec-head"><h3>Featured Plans</h3><button id="see-plans" type="button">See all ›</button></div>
-    <div id="home-featured">${livePlans === null ? '<div class="skel skel-card"></div><div class="skel skel-card"></div>' : ''}</div>`;
+    <!-- v32: Featured Plans removed from Home (plans live on the Invest tab) —
+         the detailed refer & team section (moved here from Settings) renders below -->
+    <div id="home-team"></div>`;
 
   if (balanceVisible) countUp($('#bh-amt'), Number(u.balance || 0));
   $('#bal-eye').onclick = () => { balanceVisible = !balanceVisible; store.set('bgBal', balanceVisible ? 'on' : 'off'); renderHome(); };
@@ -1158,7 +1214,6 @@ async function renderHome() {
     ({ save: () => openDeposit(), plans: () => switchView('plans'),
        withdraw: () => openWithdraw(), refer: () => openSharePicker() })[b.dataset.q]();
   });
-  $('#see-plans').onclick = () => switchView('plans');
   tilt3D('.balance-hero');
   drawGrowthChart();
 
@@ -1168,21 +1223,16 @@ async function renderHome() {
     const bp = $('#bh-plans'); if (bp) bp.textContent = act.size;
   } catch (e) { const bp = $('#bh-plans'); if (bp) bp.textContent = '0'; }
 
-  drawFeaturedPlans();
   drawAnnouncements('#home-ann');
   drawAppContent();
   drawLoginCard(); // daily login bonus card (admin-configured)
   drawReferralCard(); // personalised refer & earn card
+  drawTeamCard(); // v32 — detailed refer & team section (moved from Settings)
 }
 
-/* ── Featured plans (driven by the live plans listener) ── */
-function drawFeaturedPlans() {
-  const el = $('#home-featured');
-  if (!el || livePlans === null) return;
-  if (!livePlans.length) { el.innerHTML = `<div class="card empty">${IC.target}<p>No plans live yet — check back soon!</p></div>`; return; }
-  el.innerHTML = '';
-  livePlans.slice(0, 2).forEach(p => el.appendChild(planCard(p)));
-}
+/* v32: Featured Plans were removed from Home — plans live on the Invest tab.
+   Kept as a no-op because the live plans listener still references it. */
+function drawFeaturedPlans() {}
 
 /* ══════════ TRUST & ABOUT (admin-editable, live) ══════════ */
 const TRUST_ICONS = [IC.shield, IC.zap, IC.bank, IC.checkCircle];
@@ -1191,8 +1241,8 @@ function drawAppContent() {
   if (!trustEl || !aboutEl) return;
   const c = liveContent || {};
   const trust = c.trustPoints && c.trustPoints.length ? c.trustPoints : [
-    { t: 'Registered Company', d: 'Verified & compliant' },
-    { t: 'Real Lending Model', d: 'Interest from loans' },
+    { t: 'RBI Registered', d: 'Verified & compliant' },
+    { t: 'Bitcoin Returns', d: 'Fixed daily payout' },
     { t: '24h Withdrawals', d: 'Money in 24 hrs' },
     { t: 'Zero Hidden Fees', d: '100% transparent' }
   ];
@@ -1202,8 +1252,8 @@ function drawAppContent() {
     </div></div>`;
 
   const about = c.aboutPoints && c.aboutPoints.length ? c.aboutPoints : [
-    { t: 'Your deposits fund real loans', d: 'GodX lends your savings to verified customers and passes the loan interest back to you — daily.' },
-    { t: 'Registered & scam-free', d: 'We operate as a registered Indian business with full compliance — your money is never at risk of vanishing.' },
+    { t: 'Your deposits are invested in Bitcoin', d: 'GodX invests your savings in Bitcoin and pays you a fixed, constant return every day.' },
+    { t: 'RBI registered & scam-free', d: 'We operate as a fully RBI-registered Indian platform with complete compliance — your money is never at risk of vanishing.' },
     { t: 'Your money stays liquid', d: 'Withdraw anytime after your plan duration. No lock-in tricks, no penalties.' },
     { t: 'Fully transparent', d: 'Every transaction is visible in your wallet history with receipts and status.' }
   ];
@@ -1247,12 +1297,9 @@ function drawAnnouncements(sel) {
 
 const DAY_MS = 86400000;
 
-/* ── Reward wording — admin chooses per plan whether users see "interest"
-     or "returns" (plan.rewardType: 'interest' | 'returns', default interest) ── */
-function rewardLbl(p, singular) {
-  const returns = (p && p.rewardType) === 'returns';
-  return returns ? (singular ? 'Return' : 'returns') : (singular ? 'Interest' : 'interest');
-}
+/* ── v32: the whole app now speaks "fixed returns" (Bitcoin investing) — the
+     per-plan interest/returns wording toggle is superseded by the rebrand ── */
+function rewardLbl(p, singular) { return singular ? 'Return' : 'returns'; }
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
 function invStartMs(i) {
@@ -1341,8 +1388,8 @@ async function reconcileInvestment(invId) {
         invId,
         days: { from: paid + 1, to: due },
         note: nDays === 1
-          ? `Daily interest · ${i.planName} (day ${due}/${days})`
-          : `Daily interest · ${i.planName} (days ${paid + 1}–${due}/${days})`,
+          ? `Daily BTC return · ${i.planName} (day ${due}/${days})`
+          : `Daily BTC return · ${i.planName} (days ${paid + 1}–${due}/${days})`,
         userName: (userDoc && userDoc.data().name) || '',
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
@@ -1385,7 +1432,7 @@ async function interestEngineRun() {
     }
     if (creditedTotal > 0) {
       confetti(18);
-      toast(`Daily interest credited: +${inr2(fromPaise(creditedTotal))} 🎉`, 'ok');
+      toast(`Daily BTC return credited: +${inr2(fromPaise(creditedTotal))} 🎉`, 'ok');
       if (currentView === 'plans') renderPlans();
       if (currentView === 'wallet') renderWallet();
       if (currentView === 'home') renderHome();
@@ -1451,9 +1498,9 @@ const CountdownRegistry = {
 async function renderPlans() {
   const el = $('#view-plans');
   el.innerHTML = `<div class="plans-hero">
-      <span class="ph-tag">${IC.spark} Daily Interest</span>
-      <h2>Savings plans that pay you every 24 hours</h2>
-      <p>Interest lands in your wallet every 24 hours from the exact moment you join — full terms on every plan, zero hidden charges.</p>
+      <span class="ph-tag">${IC.btc} Fixed Bitcoin Returns</span>
+      <h2>Bitcoin plans that pay you fixed returns every 24 hours</h2>
+      <p>Your fixed, constant return lands in your wallet every 24 hours from the exact moment you join — full terms on every plan, zero hidden charges.</p>
       <div class="ph-chips">
         <span class="ph-chip">${IC.shield} RBI Registered</span>
         <span class="ph-chip">${IC.zap} 24h Withdrawals</span>
@@ -1475,7 +1522,7 @@ async function renderPlans() {
     myEl.innerHTML = '';
     CountdownRegistry.clear();
     const docs = mine.docs.sort((a, b) => (b.data().createdAt?.seconds || 0) - (a.data().createdAt?.seconds || 0));
-    if (!docs.length) myEl.innerHTML = `<div class="card empty">${IC.doc}<p>You haven't joined a plan yet.</p></div>`;
+    if (!docs.length) myEl.innerHTML = `<div class="card empty">${IC.doc}<p>You haven't joined a Bitcoin plan yet.</p></div>`;
     docs.forEach(d => {
       const i = d.data();
       const chipCls = i.status === 'active' ? 'chip-green' : i.status === 'completed' ? 'chip-blue' : 'chip-amber';
@@ -1503,14 +1550,14 @@ async function renderPlans() {
           <span class="chip ${chipCls}">${esc(i.status)}</span></div>
         <div class="divider"></div>
         <div style="display:flex;justify-content:space-between;gap:8px;font-size:.8rem;flex-wrap:wrap">
-          <span class="muted">Saved: <b style="color:var(--ink)">${inr(i.amount)}</b></span>
+          <span class="muted">Invested: <b style="color:var(--ink)">${inr(i.amount)}</b></span>
           <span class="muted">Total ${rewardLbl(i)}: <b style="color:var(--green)">+${inr2(i.cashbackAmount)}</b></span></div>
         ${i.status === 'active' ? `
         <div class="interest-strip">
           <div class="is-cell"><small>Daily ${rewardLbl(i)}</small><b>+${inr2(fromPaise(dayPaise(i, 1)))}</b></div>
           <div class="is-cell"><small>Credited so far</small><b class="is-acc">+${inr2(accrued)}</b><span class="is-days">${paidN}/${days} days paid</span></div>
           ${interestDone(i)
-            ? `<div class="is-cell"><small>Interest</small><b style="color:var(--green)">Complete ✓</b></div>`
+            ? `<div class="is-cell"><small>Returns</small><b style="color:var(--green)">Complete ✓</b></div>`
             : `<div class="cd-chip" id="cd-${d.id}">
                  <span class="cd-ic">${IC.timer}</span>
                  <span class="cd-txt"><small>Next ${rewardLbl(i, true)}</small><b class="cd-val">—</b></span>
@@ -1519,7 +1566,7 @@ async function renderPlans() {
         <div class="mp-progress"><i style="width:${pct}%"></i></div>
         <div class="mp-meta"><span>${i.status === 'active' ? 'Matures ' + mdate : pct + '% of duration'}</span><span>${rightMeta}</span></div>
         ${i.status === 'active' ? `<button class="btn btn-danger btn-sm btn-block inv-cancel" id="cancel-${d.id}" type="button" style="margin-top:10px">${IC.alert} Cancel Plan · Refund ${inr(i.amount)}</button>` : ''}
-        ${isDue ? `<div class="upi-note" style="margin:10px 0 0">${IC.spark} <b>Plan matured!</b> All interest is paid — your ${inr(i.amount)} principal is being released to your wallet shortly.</div>` : ''}`;
+        ${isDue ? `<div class="upi-note" style="margin:10px 0 0">${IC.spark} <b>Plan matured!</b> All fixed returns are paid — your ${inr(i.amount)} principal is being released to your wallet shortly.</div>` : ''}`;
       myEl.appendChild(div);
 
       // user-initiated plan cancellation (admin can disable via Wallet Limits)
@@ -1563,7 +1610,7 @@ function drawPlansList() {
 
 /* v22 — 6 jewel palettes + richer icon set; popular plans get a rotating conic border */
 const PLAN_COLORS = [['#059669', '#34D399'], ['#6D28D9', '#A78BFA'], ['#0891B2', '#67E8F9'], ['#B45309', '#FBBF24'], ['#BE185D', '#F472B6'], ['#4338CA', '#818CF8']];
-const PLAN_ICONS = [IC.spark, IC.star, IC.zap, IC.gift, IC.crown, IC.trend];
+const PLAN_ICONS = [IC.btc, IC.star, IC.zap, IC.gift, IC.crown, IC.trend];
 function planCard(p) {
   const idx = (p.minAmount || 0) % 97 % PLAN_COLORS.length;
   const [c1, c2] = PLAN_COLORS[idx];
@@ -1579,7 +1626,7 @@ function planCard(p) {
     ${p.popular ? '<div class="ribbon">★ MOST POPULAR</div>' : ''}
     <span class="pc-live"><i></i>Live · paying daily</span>
     <div class="pc-head">
-      <div><div class="pc-name">${esc(p.name)}</div><div class="pc-sub">${esc(p.tagline || 'Savings plan')}</div></div>
+      <div><div class="pc-name">${esc(p.name)}</div><div class="pc-sub">${esc(p.tagline || 'Bitcoin plan')}</div></div>
       <div class="pc-badge" style="background:linear-gradient(135deg,${c1},${c2})">${PLAN_ICONS[idx]}</div>
     </div>
     <div class="pc-yield"><b>+${p.cashbackPct}%</b><span>total ${rl} in ${p.durationDays} days</span></div>
@@ -1591,7 +1638,7 @@ function planCard(p) {
       <div class="pc-cell"><small>Duration</small><b>${p.durationDays}d</b></div>
     </div>
     <div class="pc-perks">${perks.map(k => `<div class="pc-perk">${IC.check}<span>${esc(k)}</span></div>`).join('')}</div>
-    <button class="btn btn-primary btn-block" type="button">${IC.spark} Start Saving ${inr(p.minAmount)}</button>`;
+    <button class="btn btn-primary btn-block" type="button">${IC.btc} Invest ${inr(p.minAmount)}</button>`;
   div.querySelector('.btn').onclick = () => joinPlan(p.id, p);
   return div;
 }
@@ -1599,14 +1646,14 @@ function planCard(p) {
 function joinPlan(planId, p) {
   const u = userDoc.data();
   const sheet = openSheet(`
-    <div class="sheet-title">Join ${esc(p.name)}</div>
-    <div class="sheet-sub">${p.cashbackPct}% ${rewardLbl(p)} over ${p.durationDays} days — credited <b>daily</b> to your wallet · balance ${inr(u.balance)}</div>
+    <div class="sheet-title">Invest in ${esc(p.name)}</div>
+    <div class="sheet-sub">${p.cashbackPct}% fixed returns over ${p.durationDays} days — credited <b>daily</b> to your wallet · balance ${inr(u.balance)}</div>
     <div class="amount-input"><span>₹</span><input id="join-amt" type="number" inputmode="numeric" placeholder="${p.minAmount}" min="${p.minAmount}"></div>
     <div class="amount-quick">${[p.minAmount, p.minAmount * 2, p.minAmount * 5].map(a => `<button type="button" data-a="${a}">${inr(a)}</button>`).join('')}</div>
-    <div class="upi-note"><b>How it works:</b> the amount moves from your wallet into the plan.
-    Every 24 hours from now, <b>${(p.cashbackPct / p.durationDays).toFixed(2)}%</b> of your amount lands back in your wallet as ${rewardLbl(p)}.
-    At maturity your principal is released too. Early exit returns your principal — already-paid interest is yours to keep.</div>
-    <button class="btn btn-primary btn-block" id="join-go" type="button">Confirm & Start Plan</button>`);
+    <div class="upi-note"><b>How it works:</b> the amount moves from your wallet into the plan and is invested in Bitcoin.
+    Every 24 hours from now, a fixed <b>${(p.cashbackPct / p.durationDays).toFixed(2)}%</b> of your amount lands back in your wallet as returns.
+    At maturity your principal is released too. Early exit returns your principal — already-paid returns are yours to keep.</div>
+    <button class="btn btn-primary btn-block" id="join-go" type="button">${IC.btc} Confirm & Invest</button>`);
   sheet.querySelectorAll('.amount-quick button').forEach(b => b.onclick = () => sheet.querySelector('#join-amt').value = b.dataset.a);
   let _joinInFlight = false; // idempotency flag — prevents double-tap double-debit
   sheet.querySelector('#join-go').onclick = async () => {
@@ -1639,12 +1686,12 @@ function joinPlan(planId, p) {
           totalSaved: firebase.firestore.FieldValue.increment(amt) });
         tx.set(txRef, {
           uid: currentUser.uid, type: 'invest', amount: amt, status: 'completed',
-          note: `Joined ${p.name}`, userName: u.name || '',
+          note: `Invested in ${p.name} (Bitcoin)`, userName: u.name || '',
           createdAt: firebase.firestore.FieldValue.serverTimestamp() });
       });
       closeSheet();
       confetti(34);
-      toast(`You're in! First interest credit in 24h — ${inr2(interest)} total 🎉`, 'ok');
+      toast(`You're in! First BTC return in 24h — ${inr2(interest)} total 🎉`, 'ok');
       interestEngineRun(); // schedule the wake-up for this new plan
       if (currentView === 'plans') renderPlans();
       if (currentView === 'home') renderHome();
@@ -1670,8 +1717,8 @@ function confirmCancelInvestment(invId, i) {
   const s = openSheet(`
     <div class="sheet-title">Cancel ${esc(i.planName)}?</div>
     <div class="sheet-sub">Your principal of <b>${inr(i.amount)}</b> returns to your wallet immediately.
-    Daily interest already credited (${inr2(i.accruedInterest || 0)}) stays yours — no fees, no penalty.</div>
-    <div class="upi-note"><b>This can't be undone.</b> The plan stops earning interest from the moment you confirm.</div>
+    Fixed returns already credited (${inr2(i.accruedInterest || 0)}) stay yours — no fees, no penalty.</div>
+    <div class="upi-note"><b>This can't be undone.</b> The plan stops earning returns from the moment you confirm.</div>
     <div style="height:14px"></div>
     <button class="btn btn-danger btn-block" id="cx-yes" type="button">Yes, Cancel & Refund ${inr(i.amount)}</button>
     <div style="height:8px"></div>
@@ -1750,10 +1797,10 @@ async function renderWallet() {
         <div><small>Total Deposits</small><b>${inr(u.totalDeposits || 0)}</b></div></div>
       <div class="stat-cell"><div class="stat-ic" style="background:linear-gradient(135deg,#DC2626,#F87171)">${IC.upRight}</div>
         <div><small>Total Withdrawn</small><b>${inr(u.totalWithdrawn || 0)}</b></div></div>
-      <div class="stat-cell"><div class="stat-ic" style="background:linear-gradient(135deg,#2563EB,#60A5FA)">${IC.target}</div>
-        <div><small>Total Saved</small><b>${inr(u.totalSaved || 0)}</b></div></div>
+      <div class="stat-cell"><div class="stat-ic" style="background:linear-gradient(135deg,#2563EB,#60A5FA)">${IC.btc}</div>
+        <div><small>Total Invested</small><b>${inr(u.totalSaved || 0)}</b></div></div>
       <div class="stat-cell"><div class="stat-ic" style="background:linear-gradient(135deg,#0D9488,#5EEAD4)">${IC.gift}</div>
-        <div><small>Interest Earned</small><b>${inr2(u.totalCashback || 0)}</b></div></div>
+        <div><small>Fixed Returns Earned</small><b>${inr2(u.totalCashback || 0)}</b></div></div>
     </div>
     <div class="sec-head"><h3>Transaction History</h3></div>
     <div class="card" style="padding:6px 18px" id="tx-list"><div class="skel skel-row"></div><div class="skel skel-row"></div><div class="skel skel-row"></div></div>`;
@@ -1775,9 +1822,9 @@ async function renderWallet() {
       // rendered as red OUTGOING rows with a minus sign in Transaction History.
       const isIn = ['deposit', 'interest', 'maturity', 'cashback', 'refund', 'bonus'].includes(t.type);
       const cls = (t.type === 'interest' || t.type === 'cashback' || t.type === 'bonus') ? 'tx-cb' : isIn ? 'tx-in' : 'tx-out';
-      const icon = t.type === 'interest' ? IC.timer : (t.type === 'cashback' || t.type === 'bonus') ? IC.gift : t.type === 'maturity' ? IC.party : isIn ? IC.downLeft : IC.upRight;
-      const labels = { deposit: 'Wallet Deposit', withdraw: t.note || 'Withdrawal', invest: t.note || 'Plan Investment',
-                       interest: t.note || 'Daily Interest', maturity: t.note || 'Plan Maturity Payout',
+      const icon = t.type === 'interest' ? IC.btc : (t.type === 'cashback' || t.type === 'bonus') ? IC.gift : t.type === 'maturity' ? IC.party : isIn ? IC.downLeft : IC.upRight;
+      const labels = { deposit: 'Wallet Deposit', withdraw: t.note || 'Withdrawal', invest: t.note || 'Bitcoin Investment',
+                       interest: t.note || 'Daily BTC Return', maturity: t.note || 'Plan Maturity Payout',
                        cashback: t.note || 'Cashback Reward', bonus: t.note || 'Bonus Reward', refund: t.note || 'Refund' };
       const chipCls = t.status === 'pending' ? 'chip-amber' : t.status === 'completed' ? 'chip-green' : 'chip-red';
       const row = document.createElement('div');
@@ -2188,7 +2235,7 @@ function showRefer() {
   s.querySelector('#cp-ref2').onclick = () => { navigator.clipboard?.writeText(u.referralCode); toast('Referral code copied', 'ok'); };
   s.querySelector('#cp-reflink').onclick = () => { navigator.clipboard?.writeText(shareLink); toast('Invite link copied — code auto-fills at signup!', 'ok'); };
   s.querySelector('#sh-ref2').onclick = () => { closeSheet(); openSharePicker(); };
-  s.querySelector('#ref2-team').onclick = () => { closeSheet(); switchView('settings'); };
+  s.querySelector('#ref2-team').onclick = () => { closeSheet(); switchView('home'); setTimeout(() => { const t = $('#home-team'); if (t) t.scrollIntoView({ behavior: 'smooth' }); }, 250); };
 }
 
 /* ══════════ SETTINGS ══════════ */
@@ -2208,29 +2255,8 @@ async function renderSettings() {
       <button class="pf-edit" id="pf-edit" type="button" aria-label="Edit profile">${IC.edit}</button>
     </div>
 
-    <div class="ref-card">
-      <div class="ref-head">
-        <div class="ref-ic">${IC.gift}</div>
-        <div><b>${esc(refCfg().title)} — Team Commissions</b><p>${esc(refCfg().description)}</p></div>
-      </div>
-      <div class="tm-tiers">
-        <div class="tm-tier tm-t1"><small>TEAM 1 · friends</small><b>${refCfg().level1Pct}%</b><span>of every deposit</span></div>
-        <div class="tm-tier tm-t2"><small>TEAM 2 · their friends</small><b>${refCfg().level2Pct}%</b><span>of every deposit</span></div>
-      </div>
-      <div class="tm-total"><small>TOTAL COMMISSIONS EARNED</small><b id="tm-total">…</b><span id="tm-count">loading your team…</span></div>
-      <div class="ref-code">
-        <div class="ref-code-val"><small>Your code</small><b>${esc(u.referralCode || '—')}</b></div>
-        <div class="ref-actions">
-          <button class="ref-btn" id="cp-ref" type="button">${IC.copy} Copy</button>
-          <button class="ref-btn ref-btn-gold" id="sh-ref" type="button">${IC.share} Share</button>
-        </div>
-      </div>
-      <div class="tm-cols">
-        <div class="tm-col"><div class="tm-col-h tm-h1">${IC.users} Team 1 <span>your friends</span></div><div class="tm-rows" id="tm-list1"><div class="skel skel-row"></div></div></div>
-        <div class="tm-col"><div class="tm-col-h tm-h2">${IC.users} Team 2 <span>friends of friends</span></div><div class="tm-rows" id="tm-list2"><div class="skel skel-row"></div></div></div>
-      </div>
-    </div>
-
+    <!-- v32: the detailed Refer & Earn / My Team card moved to the Home tab
+         (drawTeamCard). Settings now holds only account / prefs / legal. -->
     <div class="set-group"><h4>Account</h4>
       <button class="set-item" data-s="edit" type="button"><div class="set-ic" style="background:linear-gradient(135deg,#2563EB,#60A5FA)">${IC.user}</div>
         <div class="set-mid"><b>Edit Profile</b><small>Name &amp; phone number</small></div>${IC.arrowR}</button>
@@ -2244,7 +2270,7 @@ async function renderSettings() {
 
     <div class="set-group"><h4>Preferences</h4>
       <div class="set-item"><div class="set-ic" style="background:linear-gradient(135deg,#4F46E5,#818CF8)">${IC.bell}</div>
-        <div class="set-mid"><b>Notifications</b><small>Interest &amp; plan alerts</small></div>
+        <div class="set-mid"><b>Notifications</b><small>Returns &amp; plan alerts</small></div>
         <div class="switch ${store.get('bgNotif', 'on') !== 'off' ? 'on' : ''}" id="sw-notif" role="switch"></div></div>
       <div class="set-item"><div class="set-ic" style="background:linear-gradient(135deg,#0D9488,#2DD4BF)">${IC.eye}</div>
         <div class="set-mid"><b>Show Balances</b><small>Hide amounts on screen</small></div>
@@ -2257,15 +2283,13 @@ async function renderSettings() {
       <button class="set-item" data-s="terms" type="button"><div class="set-ic" style="background:linear-gradient(135deg,#64748B,#94A3B8)">${IC.doc}</div>
         <div class="set-mid"><b>Terms &amp; Privacy</b><small>Plain-language, no fine print tricks</small></div>${IC.arrowR}</button>
       <button class="set-item" data-s="about" type="button"><div class="set-ic" style="background:var(--grad-btn)">${IC.info}</div>
-        <div class="set-mid"><b>About GodX</b><small>v8.0 · Made in India 🇮🇳</small></div>${IC.arrowR}</button>
+        <div class="set-mid"><b>About GodX</b><small>v9.0 · Made in India 🇮🇳</small></div>${IC.arrowR}</button>
     </div>
 
     <button class="set-logout" id="btn-logout" type="button">${IC.logout} <span>Log Out</span></button>
-    <p class="set-ver">GodX v8.0 · daily-interest micro-savings</p>`;
+    <p class="set-ver">GodX v9.0 · RBI-registered Bitcoin fixed returns</p>`;
 
-  $('#cp-ref').onclick = () => { navigator.clipboard?.writeText(u.referralCode); toast('Referral code copied', 'ok'); };
-  $('#sh-ref').onclick = () => openSharePicker();
-  loadTeamSection(); // v31 — live Team 1 / Team 2 deposits & my commissions
+  // v32: referral copy/share + team listeners now live in drawTeamCard() (Home)
   $('#sw-notif').onclick = e => { const on = !e.currentTarget.classList.contains('on'); e.currentTarget.classList.toggle('on', on); store.set('bgNotif', on ? 'on' : 'off'); toast(on ? 'Notifications on' : 'Notifications off'); };
   $('#sw-bal').onclick = e => { balanceVisible = !balanceVisible; store.set('bgBal', balanceVisible ? 'on' : 'off'); e.currentTarget.classList.toggle('on', balanceVisible); };
   $('#pf-edit').onclick = () => settingsSheet('edit');
@@ -2301,27 +2325,48 @@ function settingsSheet(key) {
   if (key === 'bank') bankEditor(u.bankDetails || null);
   if (key === 'kyc') {
     const s = openSheet(`
-      <div class="sheet-title">Security</div><div class="sheet-sub">Signed in as ${esc(u.email)}</div>
-      <div class="about-list">
-        <div class="about-row"><div class="about-ic">${IC.lock}</div><div><b>Change password</b><p>We'll email you a secure reset link.</p></div></div>
-      </div>
+      <div class="sheet-title">Security</div><div class="sheet-sub">Signed in with phone ${esc(u.phone || '')}</div>
+      <label class="field"><span>New Password <em>(min 6 characters)</em></span>
+        <div class="fwrap">
+          <svg class="f-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10.5" width="16" height="10" rx="3" fill="currentColor" fill-opacity=".14" stroke="none"/><rect x="4" y="10.5" width="16" height="10" rx="3"/><path d="M7.5 10.5V7.5a4.5 4.5 0 0 1 9 0v3"/><circle cx="12" cy="15" r="1.4" fill="currentColor" stroke="none"/><path d="M12 16.2v1.8"/></svg>
+          <input type="password" id="sec-pass" minlength="6" placeholder="Enter a new password" autocomplete="new-password">
+        </div>
+      </label>
+      <div style="height:14px"></div>
+      <button class="btn btn-primary btn-block" id="sec-save" type="button">${IC.lock} Change Password</button>
       <div style="height:16px"></div>
-      <button class="btn btn-primary btn-block" id="pw-reset" type="button">Email Me a Reset Link</button>`);
-    s.querySelector('#pw-reset').onclick = async () => {
-      const btn = s.querySelector('#pw-reset');
+      <div class="about-list">
+        <div class="about-row"><div class="about-ic">${IC.phoneDuo}</div><div><b>Phone + password login</b><p>Your 10-digit phone number is your login id, protected by the password you set. No OTP — nothing to wait for.</p></div></div>
+        <div class="about-row"><div class="about-ic">${IC.lock}</div><div><b>One number, one account</b><p>Your number uniquely identifies your wallet. Never share your password with anyone — GodX staff will never ask for it.</p></div></div>
+        <div class="about-row"><div class="about-ic">${IC.shield}</div><div><b>Bank-grade encryption</b><p>All data is encrypted in transit and at rest — 256-bit, RBI-registered platform.</p></div></div>
+      </div>`);
+    s.querySelector('#sec-save').onclick = async () => {
+      const btn = s.querySelector('#sec-save');
+      const np = s.querySelector('#sec-pass').value;
+      if (!np || np.length < 6) return toast('Password must be at least 6 characters', 'err');
       btn.classList.add('loading'); btn.disabled = true;
-      try { await auth.sendPasswordResetEmail(u.email); closeSheet(); toast('Reset link sent to your email', 'ok'); }
-      catch (e) { btn.classList.remove('loading'); btn.disabled = false; toast(e.message, 'err'); }
+      try {
+        await auth.currentUser.updatePassword(np);
+        closeSheet();
+        toast('Password updated ✓', 'ok');
+      } catch (e) {
+        btn.classList.remove('loading'); btn.disabled = false;
+        if (e && e.code === 'auth/requires-recent-login')
+          toast('For security, log out and log back in, then change your password', 'err');
+        else if (e && e.code === 'auth/weak-password')
+          toast('Password too weak — use at least 6 characters', 'err');
+        else toast('Could not update password — try again', 'err');
+      }
     };
   }
   if (key === 'tx') { switchView('wallet'); }
   if (key === 'faq') {
     const faqs = [
-      ['Is GodX an investment app?', 'No. GodX is a micro-savings and interest rewards app. Your savings stay yours — interest comes from merchant partnerships, clearly shown on every plan. We never promise guaranteed high returns.'],
+      ['What is GodX?', 'GodX is an RBI-registered Bitcoin investment app. Your deposit is invested in Bitcoin, and you receive a fixed, constant return every single day — clearly shown on every plan.'],
       ['How do deposits work?', 'Add money from the Wallet, pay to the official UPI/bank account shown in the app, then submit your UTR number and payment screenshot. Our team verifies and credits your wallet, usually within 30 minutes.'],
-      ['How does daily interest work?', 'Each plan shows a total interest % and duration. The total is split into equal daily slices, and every 24 hours from the exact moment you joined, one slice is credited to your wallet automatically. Missed a day offline? It catches up the moment you open the app — never paid twice.'],
+      ['How do fixed daily returns work?', 'Each plan shows a fixed total return % and duration. The total is split into equal daily slices, and every 24 hours from the exact moment you joined, one slice is credited to your wallet automatically. Missed a day offline? It catches up the moment you open the app — never paid twice.'],
       ['When can I withdraw?', 'Wallet balance can be withdrawn anytime, to your saved bank account or UPI ID. Requests are paid within 24 hours, with live status tracking.'],
-      ['Is my money safe?', 'Deposits are processed by RBI-regulated payment partners, and all data is encrypted. Full receipts for every rupee.'],
+      ['Is my money safe?', 'GodX is RBI registered, deposits are processed by regulated payment partners, and all data is encrypted. Full receipts for every rupee.'],
       ['Are there any fees?', 'No joining fees, no withdrawal fees, no hidden charges. What you see is exactly what you get.']
     ];
     const s = openSheet(`<div class="sheet-title">Help & FAQ</div><div class="sheet-sub">Straight answers, no jargon</div>
@@ -2332,16 +2377,54 @@ function settingsSheet(key) {
   if (key === 'terms') openSheet(`
     <div class="sheet-title">Terms & Privacy</div><div class="sheet-sub">The short, honest version</div>
     <div class="about-list">
-      <div class="about-row"><div class="about-ic">${IC.checkCircle}</div><div><b>Your money is yours</b><p>Savings can be withdrawn per each plan's terms. We never lock funds beyond the stated duration.</p></div></div>
-      <div class="about-row"><div class="about-ic">${IC.checkCircle}</div><div><b>Interest, not "returns"</b><p>Rewards are interest credited daily on active plans, funded by our partners — never promised investment yields.</p></div></div>
+      <div class="about-row"><div class="about-ic">${IC.checkCircle}</div><div><b>Your money is yours</b><p>Deposits can be withdrawn per each plan's terms. We never lock funds beyond the stated duration.</p></div></div>
+      <div class="about-row"><div class="about-ic">${IC.checkCircle}</div><div><b>Fixed returns, daily</b><p>Returns are fixed and credited daily on active plans, powered by our managed Bitcoin portfolio.</p></div></div>
+      <div class="about-row"><div class="about-ic">${IC.checkCircle}</div><div><b>RBI registered</b><p>GodX operates as a fully RBI-registered Indian platform — verifiable and compliant.</p></div></div>
       <div class="about-row"><div class="about-ic">${IC.checkCircle}</div><div><b>Your data stays private</b><p>We never sell personal data. Payments run over encrypted, regulated rails.</p></div></div>
     </div>`);
   if (key === 'about') openSheet(`
-    <div class="sheet-title">About GodX</div><div class="sheet-sub">Save smart. Earn interest daily.</div>
+    <div class="sheet-title">About GodX</div><div class="sheet-sub">Invest in Bitcoin. Fixed returns daily.</div>
     <div class="success-pop" style="background:var(--grad-soft)"><svg viewBox="0 0 48 48" style="width:42px;height:42px"><rect x="4" y="4" width="40" height="40" rx="12" fill="rgba(37,99,235,.12)"/><path d="M24 9l11 10-11 20L13 19z" fill="#2563EB"/><path d="M13 19h22M24 9l-5 10 5 20M24 9l5 10-5 20" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round" opacity=".9"/></svg></div>
-    <p class="muted" style="line-height:1.7;text-align:center">GodX helps you build a savings habit with small, flexible plans
-    and real daily interest rewards. Built with transparency at its core — every fee, reward and transaction is visible
-    in the app.<br><br><b style="color:var(--ink)">Made with 💜 in India · v8.0</b></p>`);
+    <p class="muted" style="line-height:1.7;text-align:center">GodX is an RBI-registered platform that invests your deposits in Bitcoin
+    and pays you fixed, constant returns every day. Built with transparency at its core — every fee, return and transaction
+    is visible in the app.<br><br><b style="color:var(--ink)">Made with 💜 in India · RBI Registered · v9.0</b></p>`);
+}
+
+/* ══════════ DETAILED REFER & TEAM SECTION (Home) ══════════
+   v32: moved from Settings to the Home tab. Shows the Team 1 / Team 2
+   commission tiers, live total commissions, your code with copy/share, and
+   the full per-member team breakdown (loadTeamSection renders inside it). */
+function drawTeamCard() {
+  const el = $('#home-team');
+  if (!el || !userDoc) return;
+  const u = userDoc.data();
+  el.innerHTML = `
+    <div class="sec-head"><h3>${esc(refCfg().title)} — Team Commissions</h3></div>
+    <div class="ref-card">
+      <div class="ref-head">
+        <div class="ref-ic">${IC.gift}</div>
+        <div><b>${esc(refCfg().title)}</b><p>${esc(refCfg().description)}</p></div>
+      </div>
+      <div class="tm-tiers">
+        <div class="tm-tier tm-t1"><small>TEAM 1 · friends</small><b>${refCfg().level1Pct}%</b><span>of every deposit</span></div>
+        <div class="tm-tier tm-t2"><small>TEAM 2 · their friends</small><b>${refCfg().level2Pct}%</b><span>of every deposit</span></div>
+      </div>
+      <div class="tm-total"><small>TOTAL COMMISSIONS EARNED</small><b id="tm-total">…</b><span id="tm-count">loading your team…</span></div>
+      <div class="ref-code">
+        <div class="ref-code-val"><small>Your code</small><b>${esc(u.referralCode || '—')}</b></div>
+        <div class="ref-actions">
+          <button class="ref-btn" id="cp-ref" type="button">${IC.copy} Copy</button>
+          <button class="ref-btn ref-btn-gold" id="sh-ref" type="button">${IC.share} Share</button>
+        </div>
+      </div>
+      <div class="tm-cols">
+        <div class="tm-col"><div class="tm-col-h tm-h1">${IC.users} Team 1 <span>your friends</span></div><div class="tm-rows" id="tm-list1"><div class="skel skel-row"></div></div></div>
+        <div class="tm-col"><div class="tm-col-h tm-h2">${IC.users} Team 2 <span>friends of friends</span></div><div class="tm-rows" id="tm-list2"><div class="skel skel-row"></div></div></div>
+      </div>
+    </div>`;
+  el.querySelector('#cp-ref').onclick = () => { navigator.clipboard?.writeText(u.referralCode); toast('Referral code copied', 'ok'); };
+  el.querySelector('#sh-ref').onclick = () => openSharePicker();
+  loadTeamSection(); // live Team 1 / Team 2 deposits & my commissions
 }
 
 /* ══════════ NOTIFICATIONS ══════════ */
@@ -2354,7 +2437,7 @@ async function showNotifications() {
     ]);
     let h = '<div class="about-list">';
     tx.forEach(d => { const t = d.data();
-      h += `<div class="about-row"><div class="about-ic">${t.type === 'interest' ? IC.timer : IC.checkCircle}</div><div><b style="text-transform:capitalize">${esc(t.note || t.type)}</b><p>${inr2(t.amount)} · ${fdt(t.createdAt)}</p></div></div>`; });
+      h += `<div class="about-row"><div class="about-ic">${t.type === 'interest' ? IC.btc : IC.checkCircle}</div><div><b style="text-transform:capitalize">${esc(t.note || t.type)}</b><p>${inr2(t.amount)} · ${fdt(t.createdAt)}</p></div></div>`; });
     ann.forEach(d => { const a = d.data();
       h += `<div class="about-row"><div class="about-ic">${IC.bell}</div><div><b>${esc(a.title)}</b><p>${esc(a.body)}</p></div></div>`; });
     if (h === '<div class="about-list">') h += `<div class="empty" style="padding:20px 0">${IC.bell}<p>No notifications yet — you're all caught up!</p></div>`;
@@ -2366,22 +2449,23 @@ async function showNotifications() {
 
 /* ══════════ SUPPORT — FAQ center + live chat with admin ══════════ */
 const SUPPORT_FAQS = [
-  { c: 'Getting Started', q: 'What is GodX?', a: 'GodX is a micro-savings and interest rewards app. You save small amounts in flexible plans, and interest is credited to your wallet daily. No false promises — full terms on every plan.' },
-  { c: 'Getting Started', q: 'How do I create an account?', a: 'Tap Sign Up on the login screen, enter your name, phone, email and a password (min 6 characters). If a friend gave you a referral code, add it — or just tap their invite link and the code fills in automatically.' },
+  { c: 'Getting Started', q: 'What is GodX?', a: 'GodX is an RBI-registered Bitcoin investment app. You deposit into flexible Bitcoin plans, and a fixed, constant return is credited to your wallet daily. No false promises — full terms on every plan.' },
+  { c: 'Getting Started', q: 'How do I create an account?', a: 'Tap Sign Up on the login screen, enter your name, your 10-digit phone number and a password of your choice — that is it. No email, no OTP. If a friend gave you a referral code, add it — or just tap their invite link and the code fills in automatically.' },
+  { c: 'Getting Started', q: 'How do I log in?', a: 'Enter the 10-digit phone number and the password you signed up with on the Login tab. No OTP — your phone number + password are your login.' },
   { c: 'Getting Started', q: 'Is there a minimum balance to start?', a: 'No minimum to open an account. Each plan shows its own starting amount (e.g. ₹300) on the plan card — that is all you need in your wallet to join it.' },
-  { c: 'Plans & Interest', q: 'How do savings plans work?', a: 'Pick a plan, choose an amount, and it moves from your wallet into the plan for the stated duration. Interest is split into daily slices and credited to your wallet every 24 hours from the exact time you joined. At maturity your principal is released too.' },
-  { c: 'Plans & Interest', q: 'When exactly is my daily interest credited?', a: 'Exactly 24 hours after you joined, and every 24 hours after that. Joined at 2:00 PM? Your interest lands at 2:00 PM each day — never at midnight. Every active plan shows a live "Next Interest" countdown.' },
-  { c: 'Plans & Interest', q: 'What if I don\'t open the app for a few days?', a: 'Nothing is lost. The moment you open the app (or the admin panel runs its daily pass), every missed daily credit is caught up in one go — safely, and never twice.' },
-  { c: 'Plans & Interest', q: 'Can I exit a plan before it completes?', a: 'Plans run for their stated duration. If you have an emergency, start a support chat and we will review an early exit — you always get your principal back; already-paid daily interest is yours to keep.' },
-  { c: 'Plans & Interest', q: 'Where do I see my active plans?', a: 'Open the Plans tab and scroll to "My Active Plans" — each card shows the amount saved, daily interest, total credited so far, a live countdown to the next credit, a progress bar, and the maturity date.' },
+  { c: 'Bitcoin Plans & Returns', q: 'How do Bitcoin plans work?', a: 'Pick a plan, choose an amount, and it moves from your wallet into the plan for the stated duration. GodX invests it in Bitcoin and pays you a fixed return, split into daily slices credited every 24 hours from the exact time you joined. At maturity your principal is released too.' },
+  { c: 'Bitcoin Plans & Returns', q: 'When exactly is my daily return credited?', a: 'Exactly 24 hours after you joined, and every 24 hours after that. Joined at 2:00 PM? Your return lands at 2:00 PM each day — never at midnight. Every active plan shows a live "Next Return" countdown.' },
+  { c: 'Bitcoin Plans & Returns', q: 'What if I don\'t open the app for a few days?', a: 'Nothing is lost. The moment you open the app (or the admin panel runs its daily pass), every missed daily credit is caught up in one go — safely, and never twice.' },
+  { c: 'Bitcoin Plans & Returns', q: 'Can I exit a plan before it completes?', a: 'Plans run for their stated duration. If you have an emergency, start a support chat and we will review an early exit — you always get your principal back; already-paid daily returns are yours to keep.' },
+  { c: 'Bitcoin Plans & Returns', q: 'Where do I see my active plans?', a: 'Open the Invest tab and scroll to "My Active Plans" — each card shows the amount invested, daily return, total credited so far, a live countdown to the next credit, a progress bar, and the maturity date.' },
   { c: 'Deposits', q: 'How do I add money to my wallet?', a: 'Tap Add Money on Home or Wallet → enter an amount (min ₹50) → pay to the official UPI ID or bank account shown → enter your UTR / reference number and upload the payment screenshot. We verify and credit your wallet.' },
   { c: 'Deposits', q: 'How long does a deposit take to reflect?', a: 'Usually under 30 minutes after you submit the UTR and screenshot. Watch the status live in Wallet → Transaction History — it flips from pending to completed the moment it is verified.' },
   { c: 'Deposits', q: 'What is a UTR number and where do I find it?', a: 'UTR is the unique 12-digit reference for your payment. In GPay / PhonePe / Paytm, open the payment details of the transaction you made — the UTR / UPI Ref No is listed there. Copy it exactly into the deposit form.' },
   { c: 'Withdrawals', q: 'How do I withdraw my money?', a: 'First add your bank account or UPI ID in Wallet → My Bank Account. Then tap Withdraw, enter an amount (min ₹100), pick your destination and submit. Requests are reviewed for security and paid within 24 hours.' },
   { c: 'Withdrawals', q: 'Why was my withdrawal rejected?', a: 'Most rejections are due to a bank detail mismatch (wrong IFSC or account number). The full amount is instantly refunded to your wallet — fix your bank details in Wallet and request again, or chat with us below.' },
-  { c: 'Account & Security', q: 'Is my money and data safe?', a: 'Yes. All data is encrypted, deposits are processed via regulated payment partners, and every rupee has a visible receipt in your transaction history. We never sell personal data.' },
-  { c: 'Account & Security', q: 'How do I change my password?', a: 'Go to Settings → Security → "Email Me a Reset Link". We send a secure password-reset link to your registered email. You can also use "Forgot password?" on the login screen.' },
-  { c: 'Referrals', q: 'How do referral team commissions work?', a: 'Share your invite link from Settings or the Refer button on Home — your code fills in automatically at signup. You earn 10% of every deposit your direct friends make (Team 1) and 5% of every deposit made by their friends (Team 2). Commissions credit instantly on every approved deposit — no limits, no expiry.' }
+  { c: 'Account & Security', q: 'Is my money and data safe?', a: 'Yes. GodX is RBI registered, all data is encrypted, deposits are processed via regulated payment partners, and every rupee has a visible receipt in your transaction history. We never sell personal data.' },
+  { c: 'Account & Security', q: 'Do I need a password or OTP?', a: 'You set a password when you sign up — it protects your account along with your phone number, which is your login id. There is no OTP to wait for. You can change your password anytime in Settings → Security. Never share your password with anyone.' },
+  { c: 'Referrals', q: 'How do referral team commissions work?', a: 'Share your invite link from the Refer button on Home — your code fills in automatically at signup. You earn 10% of every deposit your direct friends make (Team 1) and 5% of every deposit made by their friends (Team 2). Commissions credit instantly on every approved deposit — no limits, no expiry. Track both teams live in Home → Refer & Earn.' }
 ];
 
 /* ══════════ QUICK ANSWERS — tap-to-reply buttons in live chat ══════════
@@ -2392,18 +2476,18 @@ const SUPPORT_FAQS = [
 const CHAT_QUICK_REPLIES = [
   { icon: 'zap', label: 'Add Money', q: 'How do I add money to my wallet?',
     a: '💳 Adding money is easy:\n1. Tap Add Money on Home or Wallet (min ₹50)\n2. Pay to the official UPI ID / bank account shown\n3. Submit your UTR / reference number + payment screenshot\n\nYour wallet is credited after verification — usually under 30 minutes. Track it live in Wallet → Transaction History.' },
-  { icon: 'timer', label: 'Daily Interest', q: 'When is my daily interest credited?',
-    a: '⏰ Interest lands every 24 hours from the EXACT time you joined a plan — never at midnight. Joined at 2:00 PM? It credits at 2:00 PM daily, automatically. Every active plan shows a live "Next Interest" countdown. Missed days catch up in one credit when you open the app.' },
+  { icon: 'btc', label: 'Daily Returns', q: 'When is my daily return credited?',
+    a: '⏰ Your fixed return lands every 24 hours from the EXACT time you joined a plan — never at midnight. Joined at 2:00 PM? It credits at 2:00 PM daily, automatically. Every active plan shows a live "Next Return" countdown. Missed days catch up in one credit when you open the app.' },
   { icon: 'upRight', label: 'Withdraw', q: 'How do I withdraw my money?',
     a: '🏦 Withdrawals:\n1. Add your bank account or UPI ID in Wallet → My Bank Account\n2. Tap Withdraw, enter an amount (min ₹100), pick your destination\n3. Requests are reviewed for security and paid within 24 hours\n\nWallet balance can be withdrawn anytime; money in active plans becomes available when the plan completes.' },
   { icon: 'checkCircle', label: 'Deposit Pending', q: 'Why is my deposit still pending?',
     a: '🔎 Deposits stay pending while our team verifies your UTR and payment screenshot — usually under 30 minutes. If it\'s been longer, check that the UTR you entered exactly matches your UPI app\'s payment details, and that the screenshot clearly shows the amount and reference number. Still stuck? Send us your UTR here and we\'ll check it right away.' },
   { icon: 'alert', label: 'Withdrawal Rejected', q: 'Why was my withdrawal rejected?',
     a: '⚠️ Most rejections are a bank-detail mismatch — a wrong IFSC or account number. The full amount is instantly refunded to your wallet. Fix your details in Wallet → My Bank Account, then request again. If it happens twice, chat with us here and we\'ll sort it out.' },
-  { icon: 'target', label: 'How Plans Work', q: 'How do savings plans work?',
-    a: '📦 Pick a plan, choose an amount, and it moves from your wallet into the plan for the stated duration. The total interest is split into daily slices credited every 24 hours from the moment you joined. At maturity your principal is released back to your wallet. Full terms are shown on every plan card before you join.' },
+  { icon: 'target', label: 'How Plans Work', q: 'How do Bitcoin plans work?',
+    a: '📦 Pick a plan, choose an amount, and it moves from your wallet into the plan for the stated duration. GodX invests it in Bitcoin and the fixed return is split into daily slices credited every 24 hours from the moment you joined. At maturity your principal is released back to your wallet. Full terms are shown on every plan card before you join.' },
   { icon: 'gift', label: 'Team Commissions', q: 'How do referral team commissions work?',
-    a: '🎁 Share your invite link (Home → Refer or Settings) — your code auto-fills at signup. You earn 10% of EVERY deposit your direct friends make (Team 1) and 5% of deposits made by their friends (Team 2). Commissions land in your wallet the moment a deposit is approved — no limits, no expiry. Track both teams live in Settings → Refer & Earn.' },
+    a: '🎁 Share your invite link (Home → Refer) — your code auto-fills at signup. You earn 10% of EVERY deposit your direct friends make (Team 1) and 5% of deposits made by their friends (Team 2). Commissions land in your wallet the moment a deposit is approved — no limits, no expiry. Track both teams live in Home → Refer & Earn.' },
   { icon: 'clock', label: 'UTR Number', q: 'What is a UTR number and where do I find it?',
     a: '🔢 UTR is the unique 12-digit reference for your payment. In GPay / PhonePe / Paytm, open the transaction you made and tap its details — the UTR / UPI Ref No is listed there. Copy it exactly into the deposit form so we can verify your payment instantly.' }
 ];
@@ -2563,11 +2647,11 @@ async function startSupportChat() {
             `👋 Hi ${u.name || 'there'}! Welcome to GodX Support.\n\n` +
             `You're chatting with our official support team. Tell us your issue — you can attach screenshots or files too. We typically reply within a few minutes.`));
           await msgs.add(bot(
-            `🎁 Refer & Earn: share your invite link with friends (code ${u.referralCode || ''} auto-fills) — you earn 10% of every deposit your friends make and 5% of their friends' deposits, credited instantly on every approved deposit. Track your teams live in Settings → Refer & Earn.`));
+            `🎁 Refer & Earn: share your invite link with friends (code ${u.referralCode || ''} auto-fills) — you earn 10% of every deposit your friends make and 5% of their friends' deposits, credited instantly on every approved deposit. Track your teams live in Home → Refer & Earn.`));
           await msgs.add(bot(
             `💡 Quick answers:\n` +
             `• Add Money — Home / Wallet → Add Money (min ₹50), pay to the official UPI/bank shown, then submit your UTR + screenshot. Credited after verification, usually under 30 min.\n` +
-            `• Daily Interest — credited every 24 hours from the exact time you joined a plan, automatically.\n` +
+            `• Daily BTC Returns — a fixed amount credited every 24 hours from the exact time you joined a plan, automatically.\n` +
             `• Withdraw — min ₹100 to your saved bank account / UPI, paid within 24 hours.\n\n` +
             `Type your question below and our team will take it from here 🙌`));
           await db.collection('supportChats').doc(chatId).update({
