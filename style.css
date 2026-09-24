@@ -2621,3 +2621,63 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .tm-empty svg{width:22px;height:22px;opacity:.5;margin-bottom:4px}
 .tm-empty p{font-size:.64rem;font-weight:600;line-height:1.5}
 @media(max-width:380px){.tm-cols{grid-template-columns:1fr}}
+
+
+/* ══════════ v32 — PHONE LOGIN ══════════
+   Info badge above the phone-only login field: "no password, no OTP". */
+.phone-badge{display:flex;align-items:center;gap:10px;padding:11px 14px;margin-bottom:14px;
+  border-radius:14px;background:linear-gradient(135deg,rgba(124,58,237,.10),rgba(6,182,212,.08));
+  border:1px solid rgba(124,58,237,.22);font-size:.78rem;line-height:1.35;color:var(--ink)}
+.phone-badge svg{width:22px;height:22px;flex-shrink:0;color:#7C3AED}
+.phone-badge b{font-weight:800}
+/* digit-only phone fields: hide number spinners, keep numeric keyboard feel */
+input[inputmode="numeric"]::-webkit-outer-spin-button,
+input[inputmode="numeric"]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
+/* ═══════════ v33 — password login · input-icon visibility fix · premium bottom nav ═══════════ */
+
+/* ── ① INPUT-ICON VISIBILITY FIX ────────────────────────────────
+   The duotone icons inside login/signup fields carry a pale
+   currentColor fill layer (fill-opacity .14–.18). On the light input
+   background that tint slab washed the stroke out — icons looked
+   "invisible" in the box. Icons inside fields are now pure crisp
+   strokes with strong contrast, and they glow on focus. */
+.f-ic{color:#64748B;opacity:1;z-index:2}
+.f-ic [fill-opacity]{fill:none!important;fill-opacity:0!important}
+.field input{padding-left:46px}
+.modal-sheet .fwrap input{padding-left:46px}
+.fwrap .pw-eye{z-index:3;background:transparent;flex-shrink:0}
+.fwrap .pw-eye.on{color:var(--p1)}
+.fwrap:focus-within .f-ic{color:var(--p1);filter:drop-shadow(0 2px 6px rgba(124,58,237,.45))}
+
+/* ── ② PREMIUM BOTTOM NAV — floating glass dock ─────────────────
+   Detached from the screen edge: a rounded, frosted-glass pill that
+   floats above the content with a soft gradient active state, a glow
+   dot indicator and springy tap physics. */
+#bottom-nav{
+  bottom:calc(10px + env(safe-area-inset-bottom));
+  width:calc(100% - 24px);max-width:496px;height:66px;
+  padding:0 8px;padding-bottom:0;border-radius:24px;
+  border:1px solid rgba(124,58,237,.14);
+  background:linear-gradient(180deg,rgba(255,255,255,.88),rgba(248,250,255,.80));
+  backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5);
+  box-shadow:0 18px 44px rgba(15,23,42,.18),0 4px 14px rgba(124,58,237,.10),inset 0 1.5px 0 rgba(255,255,255,.95);
+  transform:translateX(-50%) translateZ(0)}
+.nav-btn{gap:3px;padding-top:4px;border-radius:18px;color:#8A94A6}
+.nav-btn span{font-size:.66rem;font-weight:800;letter-spacing:.15px}
+.nav-btn.active{color:var(--p1)}
+.nav-btn.active::before{top:50%;left:50%;width:52px;height:44px;margin:-22px 0 0 -26px;border-radius:16px;
+  background:linear-gradient(135deg,rgba(124,58,237,.16),rgba(6,182,212,.10));
+  box-shadow:inset 0 0 0 1px rgba(124,58,237,.16),0 6px 16px rgba(124,58,237,.14)}
+.nav-btn.active::after{top:auto;bottom:6px;width:5px;height:5px;border-radius:99px;
+  box-shadow:0 2px 8px rgba(124,58,237,.65),0 0 6px rgba(124,58,237,.4)}
+.nav-btn.active svg{transform:none;filter:drop-shadow(0 3px 8px rgba(124,58,237,.45))}
+.nav-btn.active:active svg{transform:scale(.9)}
+@keyframes navBounce{
+  0%{transform:translateY(3px) scale(.6)}
+  55%{transform:translateY(-4px) scale(1.18)}
+  80%{transform:translateY(0) scale(.96)}
+  100%{transform:translateY(0) scale(1)}}
+/* content clears the floating dock */
+#main{padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 42px)!important}
+@media(max-width:360px){#bottom-nav{height:62px}.nav-btn span{font-size:.62rem}}
