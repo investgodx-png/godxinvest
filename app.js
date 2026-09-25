@@ -2542,10 +2542,12 @@ function renderSupport() {
 }
 
 /* live list of the user's own support chats — view-scoped listener (no leaks)
-   v15: ONE chat per user. If ANY chat exists (open or closed) the "Start
-   Live Chat" button turns into either "Open Active Chat" (open) or a locked
-   "Waiting for admin to delete previous chat" (closed). A new chat is only
-   possible after admin deletes/wipes the old thread. */
+   v34: ONE ACTIVE chat per user. Pressing BACK from the chat room always
+   returns here and the previous chat (open or ended) is listed below, so the
+   user can reopen it any time. If an OPEN chat exists, the hero button
+   reopens it (no duplicates). Once the admin ENDS or DELETES that chat, the
+   button becomes "Start Live Chat" again and a fresh chat can be created —
+   ended chats stay visible below as read-only history. */
 function renderChatList() {
   const q = db.collection('supportChats').where('uid', '==', currentUser.uid);
   viewUnsub.push(q.onSnapshot(snap => {
@@ -2555,29 +2557,25 @@ function renderChatList() {
       .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
     const hero = $('#chat-new');
     const open = chats.find(c => c.status === 'open');
-    const closed = !open && chats.length ? chats[0] : null;
     if (hero) {
-      hero.disabled = !!closed;
+      hero.disabled = false;
       if (open) {
+        /* an ACTIVE chat exists — the button reopens it, never duplicates */
         hero.innerHTML = `${IC.clock} <span>Chat Active — Tap to Open</span>`;
         hero.onclick = () => openChatView(open.id);
-      } else if (closed) {
-        hero.innerHTML = `${IC.lock} <span>Previous Chat Ended — Waiting for Admin</span>`;
-        hero.onclick = () => {
-          toast('Your previous chat is closed. It must be deleted by admin before a new chat can be started.', 'err');
-          openChatView(closed.id);
-        };
       } else {
+        /* no open chat — either none yet, or the admin ended/deleted the
+           previous one, so the user is free to start a fresh chat */
         hero.innerHTML = `${IC.chat} <span>Start Live Chat</span>`;
         hero.onclick = startSupportChat;
       }
     }
     if (!chats.length) { box.innerHTML = ''; return; }
-    box.innerHTML = `<div class="sec-head" style="margin-top:18px"><h3>Your Chat</h3></div>` + chats.slice(0, 5).map(c => `
+    box.innerHTML = `<div class="sec-head" style="margin-top:18px"><h3>Your Chats</h3></div>` + chats.slice(0, 5).map(c => `
       <button class="card chat-card" data-c="${c.id}" type="button">
         <div class="cc-ic ${c.status}">${IC.chat}${c.status === 'open' ? '<i class="cc-live-dot"></i>' : ''}</div>
         <div class="cc-mid">
-          <b>Support Chat ${c.status === 'open' ? '<span class="chip chip-green">Live</span>' : '<span class="chip chip-red">Ended — Waiting for admin to delete</span>'}</b>
+          <b>Support Chat ${c.status === 'open' ? '<span class="chip chip-green">Live</span>' : '<span class="chip chip-red">Ended</span>'}</b>
           <small>${c.lastKind === 'image' ? '📷 Photo' : c.lastKind === 'file' ? '📎 ' + esc(c.lastText || 'File') : esc(c.lastText || 'Chat started')} · ${fdate(c.lastAt || c.createdAt)}</small>
         </div>
         ${c.userUnread ? `<span class="cc-unread">${c.userUnread > 9 ? '9+' : c.userUnread}</span>` : ''}
@@ -2589,36 +2587,23 @@ function renderChatList() {
 
 async function startSupportChat() {
   showLoader('Opening chat…');
-  /* ── v15 SPAM FIX: a user can hold ONLY ONE support chat at a time. If any
-     chat still exists for this user (open OR closed-but-not-deleted), we
-     REUSE it instead of creating a new one. A truly fresh chat is only
-     possible after the admin deletes the previous thread. ── */
+  /* ── v34: a user can hold ONLY ONE ACTIVE support chat at a time. If an
+     OPEN chat exists we REUSE (reopen) it instead of creating a duplicate.
+     Once the admin ends (closes) or deletes that chat, it no longer blocks —
+     a truly fresh chat is created below and the ended one stays as history. ── */
   try {
     const u = userDoc.data();
     let chatId = null;
-    /* Reuse ANY existing chat for this user (open or closed).
-       Prefer 'open' if multiple exist. */
+    /* Reuse only an OPEN chat. Ended/closed chats are history — they never
+       block starting a new one. */
     try {
       const existing = await db.collection('supportChats')
         .where('uid', '==', currentUser.uid).get();
       if (!existing.empty) {
         const open = existing.docs.find(d => d.data().status === 'open');
-        chatId = open ? open.id : existing.docs[0].id;
+        if (open) chatId = open.id;
       }
     } catch (e) { /* listing unavailable — proceed to create a fresh chat */ }
-    if (chatId) {
-      /* If the chat exists but is closed, tell the user they must wait for
-         admin to delete it before a new one can start. Otherwise open it. */
-      try {
-        const snap = await db.collection('supportChats').doc(chatId).get();
-        if (snap.exists && snap.data().status !== 'open') {
-          hideLoader();
-          toast('Your previous chat is closed. Wait for admin to delete it before starting a new chat.', 'err');
-          openChatView(chatId);
-          return;
-        }
-      } catch (e) {}
-    }
     if (!chatId) {
       const ref = await db.collection('supportChats').add({
         uid: currentUser.uid, userName: u.name || 'User', userEmail: u.email || '',
@@ -2691,7 +2676,7 @@ function openChatView(cid) {
     </div>
     <div class="chat-quick" id="ch-quick"></div>
     <div class="chat-closed-bar hidden" id="ch-closedbar">
-      <span>This chat was ended by support. A new chat can only be started after admin deletes this one.</span>
+      <span>This chat was ended by support. Go back and tap “Start Live Chat” whenever you need us again — this conversation stays saved in Your Chats.</span>
     </div>
     <div class="chat-compose" id="ch-compose">
       <input type="file" id="ch-file" hidden>
