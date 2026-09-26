@@ -2541,86 +2541,105 @@ function renderSupport() {
   draw();
 }
 
-/* live list of the user's own support chats — view-scoped listener (no leaks)
-   v34: ONE ACTIVE chat per user. Pressing BACK from the chat room always
-   returns here and the previous chat (open or ended) is listed below, so the
-   user can reopen it any time. If an OPEN chat exists, the hero button
-   reopens it (no duplicates). Once the admin ENDS or DELETES that chat, the
-   button becomes "Start Live Chat" again and a fresh chat can be created —
-   ended chats stay visible below as read-only history. */
+/* live view of the user's OWN support chat — view-scoped listener (no leaks).
+   v35 FIX: the chat document id IS the user's uid (supportChats/{uid}). This
+   is the core of the "works for one user but not another" bug fix — the old
+   code queried .where('uid','==',uid), a LIST that Firestore denies outright
+   for any user whose profile doc is missing/has an unexpected role field, and
+   the catch{} then silently created a SECOND chat. A direct doc-get can never
+   be denied for the owner, so the feature now behaves identically for EVERY
+   user. One doc per user = creating a duplicate is structurally impossible. */
 function renderChatList() {
-  const q = db.collection('supportChats').where('uid', '==', currentUser.uid);
-  viewUnsub.push(q.onSnapshot(snap => {
+  const cid = currentUser.uid;
+  viewUnsub.push(db.collection('supportChats').doc(cid).onSnapshot(snap => {
     const box = $('#chat-list');
     if (!box) return;
-    const chats = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
     const hero = $('#chat-new');
-    const open = chats.find(c => c.status === 'open');
+    if (!snap.exists) {
+      /* no chat yet — show the plain Start button, no history */
+      if (hero) { hero.disabled = false; hero.innerHTML = `${IC.chat} <span>Start Live Chat</span>`; hero.onclick = startSupportChat; }
+      box.innerHTML = '';
+      return;
+    }
+    const c = { id: snap.id, ...snap.data() };
+    const open = c.status === 'open';
     if (hero) {
       hero.disabled = false;
       if (open) {
         /* an ACTIVE chat exists — the button reopens it, never duplicates */
         hero.innerHTML = `${IC.clock} <span>Chat Active — Tap to Open</span>`;
-        hero.onclick = () => openChatView(open.id);
+        hero.onclick = () => openChatView(cid);
       } else {
-        /* no open chat — either none yet, or the admin ended/deleted the
-           previous one, so the user is free to start a fresh chat */
+        /* the admin ended the chat — the user can start a fresh one; the old
+           conversation stays visible below as read-only history */
         hero.innerHTML = `${IC.chat} <span>Start Live Chat</span>`;
         hero.onclick = startSupportChat;
       }
     }
-    if (!chats.length) { box.innerHTML = ''; return; }
-    box.innerHTML = `<div class="sec-head" style="margin-top:18px"><h3>Your Chats</h3></div>` + chats.slice(0, 5).map(c => `
+    box.innerHTML = `<div class="sec-head" style="margin-top:18px"><h3>Your Chat</h3></div>` + `
       <button class="card chat-card" data-c="${c.id}" type="button">
-        <div class="cc-ic ${c.status}">${IC.chat}${c.status === 'open' ? '<i class="cc-live-dot"></i>' : ''}</div>
+        <div class="cc-ic ${c.status}">${IC.chat}${open ? '<i class="cc-live-dot"></i>' : ''}</div>
         <div class="cc-mid">
-          <b>Support Chat ${c.status === 'open' ? '<span class="chip chip-green">Live</span>' : '<span class="chip chip-red">Ended</span>'}</b>
+          <b>Support Chat ${open ? '<span class="chip chip-green">Live</span>' : '<span class="chip chip-red">Ended</span>'}</b>
           <small>${c.lastKind === 'image' ? '📷 Photo' : c.lastKind === 'file' ? '📎 ' + esc(c.lastText || 'File') : esc(c.lastText || 'Chat started')} · ${fdate(c.lastAt || c.createdAt)}</small>
         </div>
         ${c.userUnread ? `<span class="cc-unread">${c.userUnread > 9 ? '9+' : c.userUnread}</span>` : ''}
         ${IC.arrowR}
-      </button>`).join('');
+      </button>`;
     $$('#chat-list .chat-card').forEach(x => x.onclick = () => openChatView(x.dataset.c));
   }, () => {}));
 }
 
 async function startSupportChat() {
   showLoader('Opening chat…');
-  /* ── v34: a user can hold ONLY ONE ACTIVE support chat at a time. If an
-     OPEN chat exists we REUSE (reopen) it instead of creating a duplicate.
-     Once the admin ends (closes) or deletes that chat, it no longer blocks —
-     a truly fresh chat is created below and the ended one stays as history. ── */
+  /* ── v35 FIX: ONE support chat per user, enforced by the DATABASE, not by a
+     fragile list query. The chat doc id IS the user's uid, so a second chat
+     can never be created for the same account — no matter the device, tab,
+     cache state, or profile-doc condition. The old .where('uid','==') LIST was
+     the reason it "worked for one user and not another": for users whose
+     profile doc made the rules' isAdmin() check throw, that LIST was denied,
+     the catch{} swallowed it, and a duplicate chat was created. A direct
+     doc-get on your own doc is never denied, so every user behaves the same. ── */
   try {
     const u = userDoc.data();
-    let chatId = null;
-    /* Reuse only an OPEN chat. Ended/closed chats are history — they never
-       block starting a new one. */
-    try {
-      const existing = await db.collection('supportChats')
-        .where('uid', '==', currentUser.uid).get();
-      if (!existing.empty) {
-        const open = existing.docs.find(d => d.data().status === 'open');
-        if (open) chatId = open.id;
-      }
-    } catch (e) { /* listing unavailable — proceed to create a fresh chat */ }
-    if (!chatId) {
-      const ref = await db.collection('supportChats').add({
+    const chatRef = db.collection('supportChats').doc(currentUser.uid);
+    const snap = await chatRef.get();
+    let isFresh = false;
+    if (snap.exists && snap.data().status === 'open') {
+      /* already an ACTIVE chat — just reopen it (no duplicate, no rewrite) */
+      hideLoader();
+      openChatView(currentUser.uid);
+      return;
+    }
+    if (!snap.exists) {
+      /* first-ever chat for this user */
+      isFresh = true;
+      await chatRef.set({
         uid: currentUser.uid, userName: u.name || 'User', userEmail: u.email || '',
         status: 'open', userUnread: 0, adminUnread: 0,
         lastText: '', lastKind: 'text',
         lastAt: firebase.firestore.FieldValue.serverTimestamp(),
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-      chatId = ref.id;
-      /* ── Pre-written auto-replies — FIRE-AND-FORGET (never block opening).
-         Firestore rules only allow chat owners to create messages with
-         sender == 'user'. Asking the ADMIN to write these bot messages costs
-         one extra message-read per chat in the admin panel; asking the USER
-         to write sender:'admin' messages is blocked by the security rules.
-         Compromise: the user client posts them as sender:'user' flagged with
-         autoReply:true, and BOTH sides render those flagged bubbles as
-         "Support" messages — zero rule changes, zero extra admin reads. ── */
+    } else {
+      /* chat exists but was ENDED by support — atomically flip it back to open.
+         This single write satisfies the owner-update rule (uid never changes),
+         and because the doc id is the uid the user still has exactly ONE chat. */
+      await chatRef.set({
+        uid: currentUser.uid, userName: u.name || 'User', userEmail: u.email || '',
+        status: 'open', userUnread: 0, adminUnread: 0,
+        lastText: '', lastKind: 'text',
+        lastAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdAt: snap.data().createdAt || firebase.firestore.FieldValue.serverTimestamp(),
+        reopenedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+    const chatId = currentUser.uid;
+    /* ── Pre-written auto-replies — FIRE-AND-FORGET (never block opening).
+       Only on a brand-new chat (isFresh) so a REOPENED chat doesn't get the
+       welcome script re-posted. Posted as sender:'user' + autoReply:true and
+       rendered on the support side by BOTH clients (rule-safe). ── */
+    if (isFresh) {
       (async () => {
         try {
           const msgs = db.collection('supportChats').doc(chatId).collection('messages');
