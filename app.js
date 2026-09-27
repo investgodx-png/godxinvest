@@ -2591,6 +2591,14 @@ function renderChatList() {
 }
 
 async function startSupportChat() {
+  /* v36: guard against a stale/garbage-tapped Start button that fires while
+     auth or the profile doc isn't ready yet — previously that threw a
+     TypeError inside try{} and surfaced as the misleading
+     "check your internet" toast even on a perfect connection. */
+  if (!currentUser) { toast('Please log in first to start a support chat', 'err'); return; }
+  if (!userDoc) { toast('Your profile is still loading — one moment…', 'err'); return; }
+  const btn = $('#chat-new');
+  if (btn) btn.disabled = true;
   showLoader('Opening chat…');
   /* ── v35 FIX: ONE support chat per user, enforced by the DATABASE, not by a
      fragile list query. The chat doc id IS the user's uid, so a second chat
@@ -2669,8 +2677,22 @@ async function startSupportChat() {
     hideLoader();
     openChatView(chatId);
   } catch (e) {
+    /* v36: show the REAL error instead of a generic "check internet" toast so a
+       rules/config problem is distinguishable from an actual network issue. */
     hideLoader();
-    toast('Could not start chat — check connection & try again', 'err');
+    const code = (e && e.code) || '';
+    if (code === 'permission-denied')
+      toast('Chat blocked by server rules — republish firestore.rules (v36) to your project', 'err');
+    else if (code === 'unavailable' || code === 'deadline-exceeded')
+      toast('No connection — check your internet and try again', 'err');
+    else
+      toast('Could not start chat — ' + ((e && e.message) || 'unknown error'), 'err');
+    console.error('startSupportChat failed:', e);
+  } finally {
+    /* always re-enable the Start button — the live chat-list listener
+       immediately re-binds the correct label/handler anyway */
+    const btn2 = $('#chat-new');
+    if (btn2 && btn2.disabled) btn2.disabled = false;
   }
 }
 
@@ -2856,6 +2878,9 @@ function openChatView(cid) {
       const batch = db.batch();
       batch.set(db.collection('supportChats').doc(cid).collection('messages').doc(), {
         sender: 'user', createdAt: firebase.firestore.FieldValue.serverTimestamp(), ...payload });
+      /* v36: rules now accept a NUMBER adminUnread from the owner, capped at
+         +5 per write — so this atomic increment passes the security rules
+         (the old int-typed whitelist denied every send with permission-denied). */
       batch.update(db.collection('supportChats').doc(cid), {
         lastText: payload.text || payload.fileName || (payload.kind === 'image' ? '📷 Photo' : '📎 File'),
         lastKind: payload.kind || 'text',
@@ -2868,7 +2893,11 @@ function openChatView(cid) {
       pendingEcho = 0;
       const echoList = box ? box.querySelectorAll('.chat-msg.mine.pending') : [];
       if (echoList.length) echoList[echoList.length - 1].remove();
-      toast('Message failed — check connection', 'err');
+      /* v36: distinguish a rules block from a real network failure */
+      const code = (e && e.code) || '';
+      toast(code === 'permission-denied'
+        ? 'Message blocked by server rules — republish firestore.rules (v36)'
+        : 'Message failed — check connection', 'err');
       return false;
     } finally {
       _sendInFlight = false;
